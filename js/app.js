@@ -77,6 +77,7 @@
   function vHome() {
     const d = T.today(), ci = T.cycleInfo(d), rg = T.rings(d), plan = T.planFor(d);
     let out = top(`${greeting()}`, { eyebrow: 'The Key · ' + T.fmtDate(d, { weekday: 'long', day: 'numeric', month: 'long' }), right: `<a class="icon-btn" href="#/settings" aria-label="Settings">${icon.gear}</a>` });
+    if (ui.update) out += `<div class="card tight" style="border-color:var(--gold)" data-a="updateSheet"><div class="row between"><div><div class="eyebrow">Setup update available</div><div class="small">${h(ui.update.note || 'New data for your personal setup')}</div></div><span class="btn primary sm">Apply</span></div></div>`;
     if (ci) {
       const left = T.diffDays(d, ci.end);
       out += `<div class="card tight" data-a="cycleSheet" data-id="${ci.id}" style="cursor:pointer"><div class="row between"><div><div class="eyebrow">${h(ci.name)} <span style="opacity:.6">· edit</span></div><div class="serif" style="font-size:20px">${ci.active ? `Day ${ci.day} of ${ci.total} · Week ${ci.week}` : d < ci.start ? `Starts ${T.fmtDate(ci.start)}` : 'Cycle complete'}</div></div><div class="small muted" style="text-align:right">${ci.active ? `${left} days left<br>ends ${T.fmtDate(ci.end, { day: 'numeric', month: 'short' })}` : ''}</div></div><div class="bar" style="margin-top:10px"><i style="width:${Math.round(ci.pct * 100)}%"></i></div></div>`;
@@ -102,7 +103,7 @@
     out += `<div class="card"><div class="card-head"><h3><span class="dot" style="background:var(--diet)"></span> ${S.nutrition.plans[T.dayType(d)].label}</h3><a href="#/nutrition">Plan ›</a></div><ul class="list">${mp.map((m, i) => {
       const lg = logs.find((l) => l.planned && l.time === m.time);
       const name = lg && lg.mealId !== m.mealId ? (T.meal(lg.mealId)?.name || lg.name) + ' (swap)' : m.meal?.name || 'Meal';
-      return `<li class="meal-row"><span class="meal-time">${m.time}</span><div class="grow"><div style="${i === nextIdx ? 'color:var(--gold2);font-weight:600' : ''}">${h(name)}</div><div class="tiny muted">${m.meal?.kcal ? m.meal.kcal + ' kcal' : 'kcal: from workbook'}${i === nextIdx ? ' · up next' : ''}</div></div><button class="chk ${lg ? 'on' : ''}" data-a="toggleMeal" data-d="${d}" data-mid="${m.mealId}" data-time="${m.time}" aria-label="Mark eaten">${icon.check}</button></li>`;
+      return `<li class="meal-row"><span class="meal-time">${m.time}</span><div class="grow"><div style="${i === nextIdx ? 'color:var(--gold2);font-weight:600' : ''}">${h(name)}</div><div class="tiny muted">${m.meal?.kcal ? Math.round(m.meal.kcal) + ' kcal' + (m.meal.p != null ? ' · ' + Math.round(m.meal.p) + 'g protein' : '') : 'kcal not set'}${i === nextIdx ? ' · up next' : ''}</div></div><button class="chk ${lg ? 'on' : ''}" data-a="toggleMeal" data-d="${d}" data-mid="${m.mealId}" data-time="${m.time}" aria-label="Mark eaten">${icon.check}</button></li>`;
     }).join('')}</ul><div class="small muted" style="margin-top:6px">${nut.count ? `Logged ${nut.kcal.toLocaleString()} kcal${nut.unknown ? ` + ${nut.unknown} meal(s) without kcal data` : ''} · target ${S.nutrition.targets.kcal.toLocaleString()}` : `Target ${S.nutrition.targets.kcal.toLocaleString()} kcal · ${S.nutrition.targets.p} g protein`}</div></div>`;
 
     // study
@@ -335,15 +336,15 @@
     out += `<div class="seg" style="margin-bottom:14px">${[['day', 'Day'], ['meals', 'Meals'], ['plan', 'Plans'], ['shop', 'Shopping'], ['week', 'Week']].map(([k, l]) => `<button class="${ui.nutTab === k ? 'on' : ''}" data-a="nutTab" data-t="${k}">${l}</button>`).join('')}</div>`;
     return out + ({ day: nDay, meals: nMeals, plan: nPlan, shop: nShop, week: nWeek }[ui.nutTab])();
   }
-  const handoffNote = () => `<div class="notice">Figures marked from the handoff are the previous assistant's summary, not your workbook. Send me <b>Final Diet Dashboard 2027.xlsx</b> and I'll load exact recipes, weights and macros — or edit them under Meals.</div>`;
+  const handoffNote = () => !S.nutrition.meals.some((m) => m.kcal == null || m.src === 'handoff') ? '' : `<div class="notice">Figures marked from the handoff are the previous assistant's summary, not your workbook. Send me <b>Final Diet Dashboard 2027.xlsx</b> and I'll load exact recipes, weights and macros — or edit them under Meals.</div>`;
   function nDay() {
     const d = ui.nutDate || T.today(), dt = T.dayType(d), logs = T.mealLogs(d), n = T.dayNutrition(d), tg = S.nutrition.targets;
     let out = `<div class="row between" style="margin-bottom:10px"><button class="icon-btn" data-a="nutDay" data-n="-1">‹</button><div style="text-align:center"><div class="serif" style="font-size:19px">${T.fmtDate(d, { weekday: 'long', day: 'numeric', month: 'short' })}</div>${d === T.today() ? '<div class="tiny gold">Today</div>' : ''}</div><button class="icon-btn" data-a="nutDay" data-n="1">›</button></div>`;
     out += `<div class="seg" style="margin-bottom:12px"><button class="${dt === 'home' ? 'on' : ''}" data-a="dayType" data-d="${d}" data-v="home">Home day</button><button class="${dt === 'office' ? 'on' : ''}" data-a="dayType" data-d="${d}" data-v="office">Office day</button></div>`;
-    out += `<div class="card"><div class="card-head"><h3>Planned meals</h3><span class="tiny muted">Plan total (reported): ${S.nutrition.plans[dt].reportedKcal?.toLocaleString() || '—'} kcal</span></div><ul class="list">`;
+    out += `<div class="card"><div class="card-head"><h3>Planned meals</h3><span class="tiny muted">${(() => { const ms = T.mealsPlanned(d).map((x) => x.meal); if (!ms.length || ms.some((x) => !x || x.kcal == null)) return 'Plan total: add kcal to every meal'; const t = (k) => Math.round(ms.reduce((a, x) => a + (x[k] || 0), 0)); return `Plan: ${t('kcal').toLocaleString()} kcal · ${t('p')}P · ${t('c')}C · ${t('f')}F`; })()}</span></div><ul class="list">`;
     for (const m of T.mealsPlanned(d)) {
       const lg = logs.find((l) => l.planned && l.time === m.time);
-      out += `<li><div class="meal-row"><span class="meal-time">${m.time}</span><div class="grow"><div>${h(lg ? T.meal(lg.mealId)?.name : m.meal?.name)}</div><div class="tiny muted">${(lg ? T.meal(lg.mealId) : m.meal)?.kcal ?? '? '} kcal</div></div><button class="chk ${lg ? 'on' : ''}" data-a="toggleMeal" data-d="${d}" data-mid="${m.mealId}" data-time="${m.time}">${icon.check}</button></div>${lg ? `<div class="grid2" style="margin-top:8px"><select data-c="portion" data-d="${d}" data-id="${lg.id}">${[0.5, 0.75, 1, 1.25, 1.5].map((p) => `<option value="${p}" ${p === lg.portion ? 'selected' : ''}>Portion ×${p}</option>`).join('')}</select><select data-c="swap" data-d="${d}" data-id="${lg.id}">${S.nutrition.meals.map((x) => `<option value="${x.id}" ${x.id === lg.mealId ? 'selected' : ''}>${x.id === m.mealId ? 'As planned' : 'Swap: ' + h(x.name)}</option>`).join('')}</select></div>` : ''}</li>`;
+      out += `<li><div class="meal-row"><span class="meal-time">${m.time}</span><div class="grow"><div>${h(lg ? T.meal(lg.mealId)?.name : m.meal?.name)}</div><div class="tiny muted">${(() => { const x = lg ? T.meal(lg.mealId) : m.meal; return x && x.kcal != null ? `${Math.round(x.kcal)} kcal · ${Math.round(x.p || 0)}g protein` : 'kcal not set'; })()}</div></div><button class="chk ${lg ? 'on' : ''}" data-a="toggleMeal" data-d="${d}" data-mid="${m.mealId}" data-time="${m.time}">${icon.check}</button></div>${lg ? `<div class="grid2" style="margin-top:8px"><select data-c="portion" data-d="${d}" data-id="${lg.id}">${[0.5, 0.75, 1, 1.25, 1.5].map((p) => `<option value="${p}" ${p === lg.portion ? 'selected' : ''}>Portion ×${p}</option>`).join('')}</select><select data-c="swap" data-d="${d}" data-id="${lg.id}">${S.nutrition.meals.map((x) => `<option value="${x.id}" ${x.id === lg.mealId ? 'selected' : ''}>${x.id === m.mealId ? 'As planned' : 'Swap: ' + h(x.name)}</option>`).join('')}</select></div>` : ''}</li>`;
     }
     for (const l of logs.filter((x) => !x.planned)) out += `<li class="meal-row"><span class="meal-time">${h(l.time || '')}</span><div class="grow">${h(l.name)}<div class="tiny muted">${l.kcal ?? '?'} kcal${l.portion !== 1 ? ' ×' + l.portion : ''}</div></div><button class="icon-btn" data-a="delFood" data-d="${d}" data-id="${l.id}">${icon.x}</button></li>`;
     out += `</ul><button class="btn block" style="margin-top:10px" data-a="foodSheet" data-d="${d}">+ Add other food</button></div>`;
@@ -361,7 +362,7 @@
         <label class="f">Name</label><input type="text" value="${h(m.name)}" data-bind="nutrition.meals.${i}.name">
         <div class="grid2"><div><label class="f">kcal</label><input type="number" value="${m.kcal ?? ''}" data-bind="nutrition.meals.${i}.kcal" data-type="num"></div><div><label class="f">Protein g</label><input type="number" value="${m.p ?? ''}" data-bind="nutrition.meals.${i}.p" data-type="num"></div><div><label class="f">Carbs g</label><input type="number" value="${m.c ?? ''}" data-bind="nutrition.meals.${i}.c" data-type="num"></div><div><label class="f">Fat g</label><input type="number" value="${m.f ?? ''}" data-bind="nutrition.meals.${i}.f" data-type="num"></div></div>
         <label class="f">Ingredients (one per line, e.g. "80 g oats")</label><textarea data-bind="nutrition.meals.${i}.ingText">${h(m.ingText || (m.ingredients || []).join('\n'))}</textarea>
-        <p class="tiny muted">Source: ${m.src === 'handoff' ? 'handoff summary (verify against workbook)' : 'you'}</p></details>`;
+        <p class="tiny muted">Source: ${m.src === 'handoff' ? 'handoff summary (verify against workbook)' : m.src === 'workbook' ? 'your Meal Library workbook' : 'you'}</p></details>`;
     });
     return handoffNote() + out + `<button class="btn block" data-a="addMeal">+ New meal</button>`;
   }
@@ -780,7 +781,7 @@ Start by asking about whichever of my answers is weakest.`;
       <div class="card"><h3>Install on your phone</h3>${standalone ? '<p class="good small">✓ Running as an installed app.</p>' : `<p class="small" style="margin-top:0"><b>iPhone (Safari):</b> Share button → <i>Add to Home Screen</i>.<br><b>Android (Chrome):</b> ⋮ menu → <i>Install app</i> / <i>Add to Home screen</i>.</p>`}<p class="tiny muted">Requires The Key to be served over HTTPS (see README for a free 2-minute deploy).</p></div>
       <div class="card"><h3>Personal setup</h3><p class="small muted" style="margin-top:0">${S.settings.unlocked ? `Unlocked on ${T.fmtDate(S.settings.unlocked)}. Your edits since then live only on this device — keep backups.` : 'Your routine, meal plan, bills, lock-in and quotes are stored encrypted on the site. Unlock them with your passphrase.'}</p><button class="btn block" data-a="startUnlock">${S.settings.unlocked ? 'Re-load setup from encrypted file' : 'Unlock personal setup'}</button></div>
       <div class="card"><h3>Your data</h3><p class="small muted" style="margin-top:0">Everything is stored privately on this device only — nothing is sent anywhere. Back up regularly, and use the backup file to move to a new phone.</p><div class="stack"><button class="btn block" data-a="exportData">Export backup (.json)</button><label class="btn block ghost" style="cursor:pointer">Import backup<input type="file" accept="application/json,.json" data-c="importData" style="display:none"></label><button class="btn danger block" data-a="wipe">Delete all data</button></div></div>
-      <p class="tiny muted" style="text-align:center">The Key · v1.4 · local-first · ${h(S.settings.tagline)}</p>`;
+      <p class="tiny muted" style="text-align:center">The Key · v1.5 · local-first · ${h(S.settings.tagline)}</p>`;
   }
 
   /* ---------- UNLOCK ---------- */
@@ -922,6 +923,7 @@ Start by asking about whichever of my answers is weakest.`;
     },
     clearBank: () => { if (!confirm('Remove all imported bank transactions from this device? Bills already marked paid stay paid.')) return; S.finance.bank = []; for (const k in S.finance.overrides) delete S.finance.overrides[k].bankId; refresh(); },
     cycleWeeks: (el) => { const st = document.getElementById('cyStart').value; if (!st) return; const en = T.addDays(st, +el.dataset.w * 7 - 1); document.getElementById('cyEnd').value = en; document.getElementById('cyInfo').textContent = (T.diffDays(st, en) + 1) + ' days'; },
+    updateSheet: () => openSheet(() => `<div class="row between"><h2>Apply setup update</h2><button class="icon-btn" data-a="closeSheet">${icon.x}</button></div><p class="small">${h(ui.update?.note || '')}</p><p class="small muted">This merges the new data into your app. Your logged workouts, meals, study, money and edits all stay.</p><form data-f="applyUpdate"><label class="f">Passphrase</label><input type="password" name="pass" id="pp" autocapitalize="none" autocorrect="off" spellcheck="false" required><div id="unlockErr" class="small bad" style="min-height:20px;margin-top:8px"></div><button class="btn primary block">Apply update</button></form>`),
     togglePass: (el) => { const i = document.getElementById('pp'); if (i) i.type = i.type === 'password' ? 'text' : 'password'; },
     skipUnlock: () => { ui.unlock = false; S.settings.unlockSkipped = true; save(); render(); },
     startUnlock: () => { ui.unlock = true; render(); },
@@ -951,6 +953,11 @@ Start by asking about whichever of my answers is weakest.`;
       btn.disabled = true; btn.textContent = 'Unlocking…'; err.textContent = '';
       try { await T.unlockPersonal(d.pass); S = T.S; ui.unlock = false; render.last = null; location.hash = '#/home'; render(); toast('Welcome back. Your setup is unlocked.'); }
       catch (e) { err.textContent = e.message; btn.disabled = false; btn.textContent = 'Unlock my setup'; }
+    },
+    applyUpdate: async (f, d) => {
+      const err = document.getElementById('unlockErr'), btn = f.querySelector('button.primary'); btn.disabled = true; btn.textContent = 'Applying…';
+      try { await T.unlockPersonal(d.pass, 'personal.enc.json', { merge: true }); S = T.S; ui.update = null; closeSheet(); refresh(); toast('Update applied'); }
+      catch (e) { err.textContent = e.message; btn.disabled = false; btn.textContent = 'Apply update'; }
     },
     quote: (f, d) => { (S.myQuotes = S.myQuotes || []).push({ id: T.uid(), text: d.text.trim(), by: d.by.trim() }); refresh(); toast('Quote added'); },
     cycle: (f, d) => {
@@ -1027,6 +1034,8 @@ Start by asking about whichever of my answers is weakest.`;
   window.addEventListener('hashchange', () => { ui.sheet = null; render(); });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) render(); });
   if (FIRST_RUN) ui.unlock = true;
+  async function checkUpdate() { if (!S.settings.unlocked || ui.unlock) return; const hd = await T.personalHeader(); if (hd && hd.rev > (S.settings.personalRev || 0)) { ui.update = hd; if (!ui.sheet) render(); } }
+  setTimeout(checkUpdate, 1200);
   if (!location.hash) location.hash = '#/home';
   render();
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('sw.js').catch(() => {});

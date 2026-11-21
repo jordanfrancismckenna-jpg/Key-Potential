@@ -428,7 +428,21 @@
 
   /* ---------- encrypted personal setup (AES-256-GCM, key from PBKDF2-SHA256) ---------- */
   const b64 = (str) => Uint8Array.from(atob(str), (c) => c.charCodeAt(0));
-  async function unlockPersonal(passphrase, url = 'personal.enc.json') {
+  async function personalHeader(url = 'personal.enc.json') {
+    try { const r = await fetch(url, { cache: 'no-store' }); if (!r.ok) return null; const b = await r.json(); return { rev: b.rev || 0, note: b.note || '' }; } catch (e) { return null; }
+  }
+  /* Merge reference data from an updated setup without touching anything you've logged. */
+  function mergePersonal(data, rev) {
+    const N = S.nutrition, inc = data.seed.nutrition;
+    for (const m of inc.meals || []) { const ex = N.meals.find((x) => x.id === m.id); if (ex) Object.assign(ex, m); else N.meals.push(m); }
+    for (const k of ['home', 'office']) if (inc.plans && inc.plans[k] && N.plans[k]) N.plans[k].reportedKcal = inc.plans[k].reportedKcal;
+    if (inc.targets) Object.assign(N.targets, inc.targets);
+    if (data.lockin) S.personal = { ...(S.personal || {}), lockin: data.lockin };
+    if (data.articles) S.personal = { ...(S.personal || {}), articles: data.articles };
+    if (data.seed.myQuotes) { const have = new Set((S.myQuotes || []).map((q) => q.id)); for (const q of data.seed.myQuotes) if (!have.has(q.id)) (S.myQuotes = S.myQuotes || []).push(q); }
+    S.settings.personalRev = rev; save();
+  }
+  async function unlockPersonal(passphrase, url = 'personal.enc.json', opts = {}) {
     if (!window.crypto?.subtle) throw new Error('This browser needs HTTPS to unlock.');
     const res = await fetch(url, { cache: 'no-store' });
     if (!res.ok) throw new Error('No personal setup file found on this site.');
@@ -439,15 +453,17 @@
     try { plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64(box.iv) }, key, b64(box.ct)); }
     catch (e) { throw new Error('That passphrase didn\'t unlock it. Check spelling and spaces.'); }
     const data = JSON.parse(new TextDecoder().decode(plain));
+    if (opts.merge) { mergePersonal(data, box.rev || 0); return S; }
     const st = data.seed;
     st.personal = { lockin: data.lockin || [], articles: data.articles || [] };
     st.settings.trackingSince = today();
     st.settings.unlocked = today();
+    st.settings.personalRev = box.rev || 0;
     importData(st);
     return S;
   }
 
-  window.TK = { unlockPersonal, parseBankCSV, reconcile, applyImport, parseDate, KEY, uid, esc, clamp, round2, gbp, num, londonNow, today, addDays, diffDays, weekday, startOfWeek, daysInMonth, fmtDate, range, toD, fromD,
+  window.TK = { unlockPersonal, personalHeader, parseBankCSV, reconcile, applyImport, parseDate, KEY, uid, esc, clamp, round2, gbp, num, londonNow, today, addDays, diffDays, weekday, startOfWeek, daysInMonth, fmtDate, range, toD, fromD,
     load, save, resetAll, importData, get S() { return S; },
     currentCycle, cycleInfo, tpl, planFor, sessionsOn, runsOn, workSets, plannedSetCount, e1rm, exerciseHistory, suggestNext,
     dayType, meal, mealsPlanned, mealLogs, dayNutrition,

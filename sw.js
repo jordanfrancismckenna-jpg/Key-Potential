@@ -1,5 +1,5 @@
 /* The Key service worker — offline app shell. Your data lives in localStorage, never in this cache. */
-const CACHE = 'thekey-v1.4.1';
+const CACHE = 'thekey-v1.5.0';
 const SHELL = ['./', './index.html', './css/styles.css', './js/gazette.js', './js/data.js', './js/core.js', './js/discover.js', './js/app.js', './manifest.webmanifest', './personal.enc.json', './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png', './fonts/unifrakturmaguntia-latin-400-normal.woff2', './fonts/playfair-display-latin-700-normal.woff2', './fonts/playfair-display-latin-900-normal.woff2', './fonts/playfair-display-latin-400-italic.woff2', './fonts/old-standard-tt-latin-400-normal.woff2', './fonts/old-standard-tt-latin-400-italic.woff2', './fonts/old-standard-tt-latin-700-normal.woff2'];
 
 self.addEventListener('install', (e) => {
