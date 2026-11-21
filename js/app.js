@@ -483,15 +483,26 @@
     return out + `</ul></div><button class="btn block" data-a="txnSheet">+ One-off income or spending</button>`;
   }
   function fBills() {
-    const groups = [['income', 'Income'], ['expense', 'Outgoings']];
-    let out = `<div class="notice">Amounts below come from your handoff summary. Send me <b>Budget 2026 - Refined(1).xlsx</b> and I'll load the exact lines, dates and formulas.</div>`;
-    for (const [type, label] of groups) {
-      out += `<div class="card"><h3>${label}</h3><ul class="list">${S.finance.items.filter((i) => i.type === type).map((it) => `<li class="row between" data-a="itemSheet" data-id="${it.id}" style="cursor:pointer"><div class="grow"><div>${h(it.name)}${it.variable ? ' <span class="pill">variable</span>' : ''}</div><div class="tiny ${whenStr(it) ? 'muted' : 'warn'}">${whenStr(it) || 'No date set — tap to add'}</div></div><b style="font-variant-numeric:tabular-nums">${T.gbp(it.amount)}<span class="tiny muted">/${it.freq === 'monthly' ? 'mo' : it.freq === 'weekly' ? 'wk' : it.freq === 'yearly' ? 'yr' : 'once'}</span></b></li>`).join('')}</ul></div>`;
+    const items = S.finance.items, per = (it) => (it.freq === 'monthly' || it.freq === 'lastweekday' ? 'mo' : it.freq === 'weekly' ? 'wk' : it.freq === 'yearly' ? 'yr' : 'once');
+    const needsReview = items.filter((i) => /review|provisional/i.test(i.conf || '')).length;
+    const placeholder = items.some((i) => i.src === 'handoff' || i.src === 'derived');
+    let out = placeholder ? `<div class="notice">Some amounts below come from the handoff summary. Send me your budget workbook to load the exact lines and dates.</div>` : '';
+    if (needsReview) out += `<div class="notice">${needsReview} item(s) are marked <b>Review</b> or <b>Provisional</b> in your budget: their dates vary. A Barclays statement import will show when they actually leave your account.</div>`;
+    const row = (it) => `<li class="row between" data-a="itemSheet" data-id="${it.id}" style="cursor:pointer"><div class="grow" style="min-width:0"><div>${h(it.name)}${it.variable ? ' <span class="pill">allowance</span>' : ''}</div><div class="tiny ${whenStr(it) ? 'muted' : 'warn'}">${whenStr(it) || 'No date set — tap to add'}${it.payee ? ' · ' + h(it.payee) : ''}${it.conf && /review|provisional/i.test(it.conf) ? ` · <span class="warn">${h(it.conf.split('·')[0].trim())}</span>` : ''}</div></div><b style="font-variant-numeric:tabular-nums">${T.gbp(it.amount)}<span class="tiny muted">/${per(it)}</span></b></li>`;
+    const inc = items.filter((i) => i.type === 'income');
+    out += `<div class="card"><h3>Income</h3><ul class="list">${inc.map(row).join('')}</ul></div>`;
+    const exp = items.filter((i) => i.type === 'expense');
+    const cats = {}; for (const it of exp) (cats[it.category || 'Other'] = cats[it.category || 'Other'] || []).push(it);
+    const monthly = (it) => (it.freq === 'weekly' ? it.amount * 52 / 12 : it.freq === 'yearly' ? it.amount / 12 : it.freq === 'once' ? 0 : it.amount);
+    const order = Object.entries(cats).sort((x, y) => y[1].reduce((a, i) => a + monthly(i), 0) - x[1].reduce((a, i) => a + monthly(i), 0));
+    for (const [cat, list] of order) {
+      list.sort((x, y) => (x.day || 99) - (y.day || 99));
+      out += `<div class="card"><div class="card-head"><h3>${h(cat)}</h3><span class="small muted">${T.gbp(list.reduce((a, i) => a + monthly(i), 0))}/mo</span></div><ul class="list">${list.map(row).join('')}</ul></div>`;
     }
     return out + `<button class="btn block" data-a="itemSheet" data-id="">+ Add income or bill</button>`;
   }
   const ord = (n) => n + (['th', 'st', 'nd', 'rd'][(n % 100 - 20) % 10] || ['th', 'st', 'nd', 'rd'][n % 100] || 'th');
-  const whenStr = (it) => it.freq === 'monthly' ? (it.day ? `Monthly on the ${ord(it.day)}` : '') : it.freq === 'weekly' ? (it.weekday != null ? `Every ${WDL[it.weekday]}` : '') : it.date ? (it.freq === 'yearly' ? 'Yearly on ' : 'On ') + T.fmtDate(it.date, { day: 'numeric', month: 'short', year: it.freq === 'once' ? 'numeric' : undefined }) : '';
+  const whenStr = (it) => it.freq === 'lastweekday' ? (it.weekday != null ? `Last ${WDL[it.weekday]} of each month` : '') : it.freq === 'monthly' ? (it.day ? `Monthly on the ${ord(it.day)}` : '') : it.freq === 'weekly' ? (it.weekday != null ? `Every ${WDL[it.weekday]}` : '') : it.date ? (it.freq === 'yearly' ? 'Yearly on ' : 'On ') + T.fmtDate(it.date, { day: 'numeric', month: 'short', year: it.freq === 'once' ? 'numeric' : undefined }) : '';
   function fSetup() {
     const a = [...S.finance.anchors].sort((x, y) => y.date.localeCompare(x.date));
     return `<div class="card"><h3>Record actual bank balance</h3><p class="small muted" style="margin-top:0">Enter what your banking app shows. Forecasts restart from your latest figure — this is how you reconcile. No bank connection is made.</p><form data-f="anchor"><div class="grid2"><div><label class="f">Date</label><input type="date" name="date" value="${T.today()}"></div><div><label class="f">Balance (£)</label><input type="number" step="0.01" name="amount" inputmode="decimal" required></div></div><button class="btn primary block" style="margin-top:12px">Save balance</button></form><p class="tiny muted">Tip: after recording a balance, mark anything already taken from your account as <b>Paid</b> in Upcoming so it isn't counted twice.</p></div>
@@ -503,11 +514,11 @@
     return `<div class="row between"><h2>${id ? 'Edit' : 'New'} item</h2><button class="icon-btn" data-a="closeSheet">${icon.x}</button></div><form data-f="item" data-id="${id || ''}">
       <label class="f">Name</label><input type="text" name="name" value="${h(it.name)}" required>
       <div class="grid2"><div><label class="f">Type</label><select name="type"><option value="expense" ${it.type === 'expense' ? 'selected' : ''}>Outgoing</option><option value="income" ${it.type === 'income' ? 'selected' : ''}>Income</option></select></div><div><label class="f">Amount (£)</label><input type="number" step="0.01" name="amount" value="${it.amount}" required></div></div>
-      <label class="f">Frequency</label><select name="freq">${[['monthly', 'Monthly'], ['weekly', 'Weekly'], ['yearly', 'Yearly'], ['once', 'One-off']].map(([v, l]) => `<option value="${v}" ${it.freq === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
-      <div class="grid2"><div><label class="f">Day of month (monthly)</label><input type="number" min="1" max="31" name="day" value="${it.day ?? ''}"></div><div><label class="f">Weekday (weekly)</label><select name="weekday"><option value="">—</option>${WDL.map((w, i) => `<option value="${i}" ${+it.weekday === i && it.weekday != null ? 'selected' : ''}>${w}</option>`).join('')}</select></div></div>
+      <label class="f">Frequency</label><select name="freq">${[['monthly', 'Monthly (day of month)'], ['lastweekday', 'Monthly (last weekday, e.g. last Thursday)'], ['weekly', 'Weekly'], ['yearly', 'Yearly'], ['once', 'One-off']].map(([v, l]) => `<option value="${v}" ${it.freq === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
+      <div class="grid2"><div><label class="f">Day of month (monthly)</label><input type="number" min="1" max="31" name="day" value="${it.day ?? ''}"></div><div><label class="f">Weekday (weekly / last-weekday)</label><select name="weekday"><option value="">—</option>${WDL.map((w, i) => `<option value="${i}" ${+it.weekday === i && it.weekday != null ? 'selected' : ''}>${w}</option>`).join('')}</select></div></div>
       <label class="f">Date (yearly / one-off)</label><input type="date" name="date" value="${it.date || ''}">
       <label class="row" style="margin-top:12px"><input type="checkbox" name="variable" ${it.variable ? 'checked' : ''}> <span class="small">Variable amount</span></label>
-      ${it.note ? `<p class="tiny warn">${h(it.note)}</p>` : ''}
+      ${it.payee || it.category ? `<p class="tiny muted">${[it.payee && 'Payee: ' + h(it.payee), it.category && 'Category: ' + h(it.category), it.method && h(it.method)].filter(Boolean).join(' · ')}</p>` : ''}${it.conf ? `<p class="tiny ${/review|provisional/i.test(it.conf) ? 'warn' : 'muted'}">Date confidence: ${h(it.conf)}${it.seen ? ' — seen on ' + h(it.seen) : ''}</p>` : ''}${it.note ? `<p class="tiny warn">${h(it.note)}</p>` : ''}
       <p class="tiny muted">Months shorter than the chosen day use the last day of the month. Weekend/bank-holiday shifts aren't applied automatically — override a single occurrence in Upcoming.</p>
       <div class="row" style="margin-top:12px">${id ? `<button type="button" class="btn danger" data-a="delItem" data-id="${id}">Delete</button>` : ''}<button class="btn primary grow">Save</button></div></form>`;
   }
@@ -781,7 +792,7 @@ Start by asking about whichever of my answers is weakest.`;
       <div class="card"><h3>Install on your phone</h3>${standalone ? '<p class="good small">✓ Running as an installed app.</p>' : `<p class="small" style="margin-top:0"><b>iPhone (Safari):</b> Share button → <i>Add to Home Screen</i>.<br><b>Android (Chrome):</b> ⋮ menu → <i>Install app</i> / <i>Add to Home screen</i>.</p>`}<p class="tiny muted">Requires The Key to be served over HTTPS (see README for a free 2-minute deploy).</p></div>
       <div class="card"><h3>Personal setup</h3><p class="small muted" style="margin-top:0">${S.settings.unlocked ? `Unlocked on ${T.fmtDate(S.settings.unlocked)}. Your edits since then live only on this device — keep backups.` : 'Your routine, meal plan, bills, lock-in and quotes are stored encrypted on the site. Unlock them with your passphrase.'}</p><button class="btn block" data-a="startUnlock">${S.settings.unlocked ? 'Re-load setup from encrypted file' : 'Unlock personal setup'}</button></div>
       <div class="card"><h3>Your data</h3><p class="small muted" style="margin-top:0">Everything is stored privately on this device only — nothing is sent anywhere. Back up regularly, and use the backup file to move to a new phone.</p><div class="stack"><button class="btn block" data-a="exportData">Export backup (.json)</button><label class="btn block ghost" style="cursor:pointer">Import backup<input type="file" accept="application/json,.json" data-c="importData" style="display:none"></label><button class="btn danger block" data-a="wipe">Delete all data</button></div></div>
-      <p class="tiny muted" style="text-align:center">The Key · v1.5 · local-first · ${h(S.settings.tagline)}</p>`;
+      <p class="tiny muted" style="text-align:center">The Key · v1.6 · local-first · ${h(S.settings.tagline)}</p>`;
   }
 
   /* ---------- UNLOCK ---------- */

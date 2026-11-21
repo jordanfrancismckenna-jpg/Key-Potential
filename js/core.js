@@ -214,6 +214,15 @@
           push(date);
           m++; if (m > 12) { m = 1; y++; }
         }
+      } else if (it.freq === 'lastweekday' && it.weekday != null) {
+        let [y, m] = from.split('-').map(Number); m -= 1; if (m < 1) { m = 12; y--; }
+        for (let i = 0; i < 40; i++) {
+          let dd = daysInMonth(y, m), date;
+          for (;;) { date = `${y}-${String(m).padStart(2, '0')}-${String(dd).padStart(2, '0')}`; if (weekday(date) === +it.weekday) break; dd--; }
+          if (date > addDays(to, 31)) break;
+          push(date);
+          m++; if (m > 12) { m = 1; y++; }
+        }
       } else if (it.freq === 'weekly' && it.weekday != null) {
         let d = addDays(from, -7);
         while (weekday(d) !== +it.weekday) d = addDays(d, 1);
@@ -226,7 +235,7 @@
     for (const t of S.finance.txns) if (t.date >= from && t.date <= to) out.push({ key: 'txn|' + t.id, txnId: t.id, name: t.desc, date: t.date, amount: +t.amount, status: t.status || 'expected', paidOn: t.paidOn, manual: true });
     return out.sort((a, b) => a.date.localeCompare(b.date) || b.amount - a.amount);
   }
-  const undated = () => S.finance.items.filter((it) => (it.freq === 'monthly' && !it.day) || (it.freq === 'weekly' && it.weekday == null) || ((it.freq === 'yearly' || it.freq === 'once') && !it.date));
+  const undated = () => S.finance.items.filter((it) => (it.freq === 'monthly' && !it.day) || ((it.freq === 'weekly' || it.freq === 'lastweekday') && it.weekday == null) || ((it.freq === 'yearly' || it.freq === 'once') && !it.date));
   function latestAnchor(onOrBefore) {
     return [...S.finance.anchors].filter((a) => a.date <= onOrBefore).sort((a, b) => a.date.localeCompare(b.date)).pop() || null;
   }
@@ -245,7 +254,7 @@
   function monthlySummary() {
     let inc = 0, exp = 0, weekly = 0;
     for (const it of S.finance.items) {
-      const m = it.freq === 'monthly' ? it.amount : it.freq === 'weekly' ? it.amount * 52 / 12 : it.freq === 'yearly' ? it.amount / 12 : 0;
+      const m = it.freq === 'monthly' || it.freq === 'lastweekday' ? it.amount : it.freq === 'weekly' ? it.amount * 52 / 12 : it.freq === 'yearly' ? it.amount / 12 : 0;
       if (it.type === 'income') inc += m; else if (it.freq === 'weekly') weekly += m; else exp += m;
     }
     return { income: round2(inc), monthlyBills: round2(exp), weeklyAvg: round2(weekly), afterBills: round2(inc - exp), afterAll: round2(inc - exp - weekly) };
@@ -437,6 +446,13 @@
     for (const m of inc.meals || []) { const ex = N.meals.find((x) => x.id === m.id); if (ex) Object.assign(ex, m); else N.meals.push(m); }
     for (const k of ['home', 'office']) if (inc.plans && inc.plans[k] && N.plans[k]) N.plans[k].reportedKcal = inc.plans[k].reportedKcal;
     if (inc.targets) Object.assign(N.targets, inc.targets);
+    const incF = data.seed.finance;
+    if (incF && incF.items) {
+      const F = S.finance, ids = new Set(incF.items.map((i) => i.id));
+      // drop old placeholder lines the new setup no longer contains (keeps anything you added yourself)
+      F.items = F.items.filter((i) => ids.has(i.id) || !['handoff', 'derived'].includes(i.src));
+      for (const it of incF.items) { const ex = F.items.find((x) => x.id === it.id); if (ex) Object.assign(ex, it); else F.items.push({ ...it }); }
+    }
     if (data.lockin) S.personal = { ...(S.personal || {}), lockin: data.lockin };
     if (data.articles) S.personal = { ...(S.personal || {}), articles: data.articles };
     if (data.seed.myQuotes) { const have = new Set((S.myQuotes || []).map((q) => q.id)); for (const q of data.seed.myQuotes) if (!have.has(q.id)) (S.myQuotes = S.myQuotes || []).push(q); }
