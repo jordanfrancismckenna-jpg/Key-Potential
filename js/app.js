@@ -395,14 +395,14 @@
   /* ---------- FINANCE ---------- */
   function vFinance() {
     let out = top('Finance', { back: '#/more', eyebrow: 'Cash flow' });
-    out += `<div class="seg" style="margin-bottom:14px">${[['overview', 'Overview'], ['upcoming', 'Upcoming'], ['bills', 'Bills & income'], ['setup', 'Balance'], ['ramsey', 'Ramsey']].map(([k, l]) => `<button class="${ui.finTab === k ? 'on' : ''}" data-a="finTab" data-t="${k}">${l}</button>`).join('')}</div>`;
-    return out + ({ overview: fOverview, upcoming: fUpcoming, bills: fBills, setup: fSetup, ramsey: fRamsey }[ui.finTab])();
+    out += `<div class="seg" style="margin-bottom:14px">${[['overview', 'Overview'], ['upcoming', 'Upcoming'], ['bills', 'Bills & income'], ['bank', 'Bank import'], ['setup', 'Balance'], ['ramsey', 'Ramsey']].map(([k, l]) => `<button class="${ui.finTab === k ? 'on' : ''}" data-a="finTab" data-t="${k}">${l}</button>`).join('')}</div>`;
+    return out + ({ overview: fOverview, upcoming: fUpcoming, bills: fBills, setup: fSetup, ramsey: fRamsey, bank: fBank }[ui.finTab])();
   }
   function fOverview() {
     const d = T.today(), p = T.projectedBalance(d), ms = T.monthlySummary(), und = T.undated();
     let out = '';
     const todo = [];
-    if (!S.finance.anchors.length) todo.push('Record your current bank balance (Balance tab).');
+    if (!S.finance.anchors.length) todo.push('Record your current bank balance (Balance tab), or import a Barclays statement (Bank import tab).');
     if (und.length) todo.push(`Add payment dates for ${und.length} item(s): ${und.map((x) => h(x.name)).join(', ')}.`);
     if (todo.length) out += `<div class="notice"><b>Before forecasts are reliable:</b><br>${todo.map((x) => '• ' + x).join('<br>')}<br><span class="tiny">I won't guess payday or bill dates — they need to come from you or the workbook.</span></div>`;
     if (p) {
@@ -429,6 +429,44 @@
     o += `<p class="tiny muted">Source for the Baby Steps: ramseysolutions.com/dave-ramsey-7-baby-steps. This is general education, not personal financial advice.</p>`;
     return o;
   }
+  function fBank() {
+    const F = S.finance, bank = F.bank || [], last = (F.imports || []).slice(-1)[0];
+    const mStart = T.today().slice(0, 7) + '-01';
+    const month = bank.filter((r) => r.date >= mStart);
+    const matchedIds = new Set(Object.values(F.overrides).map((o) => o.bankId).filter(Boolean));
+    const outs = month.filter((r) => r.amount < 0), unplanned = outs.filter((r) => !matchedIds.has(r.id));
+    const byType = {}; unplanned.forEach((r) => { const k = r.type || 'Other'; byType[k] = (byType[k] || 0) + -r.amount; });
+    const byPayee = {}; unplanned.forEach((r) => { const k = (r.desc.split(/\s{1,}/).slice(0, 3).join(' ') || 'Unknown').toUpperCase(); byPayee[k] = (byPayee[k] || 0) + -r.amount; });
+    let o = `<div class="card"><h3>Import a Barclays statement</h3><p class="small muted" style="margin-top:0">Your file is read here on your phone. Nothing is uploaded anywhere.</p>
+      <label class="btn primary block" style="cursor:pointer">Choose CSV file<input type="file" accept=".csv,text/csv,text/comma-separated-values,application/vnd.ms-excel" data-c="bankFile" style="display:none"></label>
+      <details style="margin-top:12px"><summary>How to get the file from Barclays</summary><ol class="small" style="padding-left:18px;margin:8px 0 0;color:#d9d2c0">
+        <li>The Barclays <b>app</b> can't export CSV. Use <b>Online Banking</b> at barclays.co.uk. On iPhone, open it in Safari and tap <b>ᴀA → Request Desktop Website</b>.</li>
+        <li>Sign in, then on your current account tap <b>Show recent transactions</b> → <b>View all transactions</b>.</li>
+        <li>Pick a date range (e.g. the last 2–3 months) and tap <b>Search</b>.</li>
+        <li>At the bottom tap <b>Export All</b> → choose <b>CSV</b>. It saves to your Files app (Downloads).</li>
+        <li>Come back here, tap <b>Choose CSV file</b>, and pick it from Downloads.</li></ol></details>
+      ${last ? `<p class="tiny muted" style="margin-bottom:0">Last import ${T.fmtDate(last.on)}: ${last.rows} transactions (${T.fmtDate(last.from)} – ${T.fmtDate(last.to)}), ${last.added} new, ${last.matched} matched to bills.</p>` : ''}</div>`;
+    if (!bank.length) return o + `<p class="tiny muted">Tip: import every week or two, then record your balance. Forecasts restart from real numbers, bills are ticked off automatically, and your bill dates are learned from your statement.</p>`;
+    o += `<div class="card"><h3>This month from your statement</h3><div class="grid2" style="margin-top:8px"><div class="kpi"><div class="l">Money out</div><div class="v">${T.gbp(outs.reduce((a, r) => a - r.amount, 0))}</div></div><div class="kpi"><div class="l">Not in your plan</div><div class="v warn">${T.gbp(unplanned.reduce((a, r) => a - r.amount, 0))}</div></div></div>
+      ${Object.keys(byType).length ? `<div class="small muted" style="margin-top:12px">Unplanned spending by type</div><ul class="list">${Object.entries(byType).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, v]) => `<li class="row between"><span>${h(k)}</span><b>${T.gbp(v)}</b></li>`).join('')}</ul>` : ''}
+      ${Object.keys(byPayee).length ? `<div class="small muted" style="margin-top:8px">Top payees</div><ul class="list">${Object.entries(byPayee).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([k, v]) => `<li class="row between"><span class="small">${h(k)}</span><span>${T.gbp(v)}</span></li>`).join('')}</ul>` : ''}
+      <p class="tiny muted" style="margin-bottom:0">"Not in your plan" is anything that didn't match a bill in your Finance tab, such as food, fuel or shopping. Add regular ones as bills so forecasts include them.</p></div>`;
+    o += `<div class="card"><h3>Recent transactions</h3><ul class="list">${[...bank].reverse().slice(0, 40).map((r) => `<li class="row between"><div class="grow" style="min-width:0"><div class="small" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${h(r.desc || r.type)}</div><div class="tiny muted">${T.fmtDate(r.date)}${r.type ? ' · ' + h(r.type) : ''}${matchedIds.has(r.id) ? ' · <span class="good">✓ matched bill</span>' : ''}</div></div><div class="${r.amount > 0 ? 'good' : ''}" style="font-variant-numeric:tabular-nums">${r.amount > 0 ? '+' : ''}${T.gbp(r.amount)}</div></li>`).join('')}</ul>
+      <button class="btn danger sm" style="margin-top:10px" data-a="clearBank">Remove imported transactions</button></div>`;
+    return o;
+  }
+  function sheetImport() {
+    const P = ui.importPreview; if (!P) return '';
+    const { parsed, recon } = P;
+    const ins = parsed.rows.filter((r) => r.amount > 0).reduce((a, r) => a + r.amount, 0), outs = parsed.rows.filter((r) => r.amount < 0).reduce((a, r) => a - r.amount, 0);
+    return `<div class="row between"><h2>Review import</h2><button class="icon-btn" data-a="closeSheet">${icon.x}</button></div>
+      <p class="small muted">${parsed.format} file · ${parsed.rows.length} transactions · ${T.fmtDate(parsed.from)} – ${T.fmtDate(parsed.to)}<br>In ${T.gbp(ins)} · Out ${T.gbp(outs)}</p>
+      ${recon.suggestions.length ? `<h3 style="margin-top:14px">Learned from your statement</h3><p class="tiny muted" style="margin-top:0">These bills had no date set. Tick the ones that look right.</p><ul class="list">${recon.suggestions.map((g, i) => `<li><label class="row" style="align-items:flex-start"><input type="checkbox" checked data-sugg="${i}"><div><div><b>${h(g.name)}</b> → ${g.field === 'day' ? `monthly on the <b>${ordinal(g.value)}</b>` : `every <b>${WDL[g.value]}</b>`}</div><div class="tiny muted">${g.evidence.map(h).join('<br>')}</div></div></label></li>`).join('')}</ul>` : ''}
+      <h3 style="margin-top:14px">Bills matched (${recon.matches.length})</h3>${recon.matches.length ? `<ul class="list">${recon.matches.map((m) => `<li class="row between"><span class="small">✓ ${h(m.name)} <span class="tiny muted">${T.fmtDate(m.date)}</span></span><span class="small">${T.gbp(m.amount)}${Math.abs(m.amount) !== Math.abs(m.expected) ? ` <span class="warn tiny">(expected ${T.gbp(Math.abs(m.expected))})</span>` : ''}</span></li>`).join('')}</ul>` : `<p class="tiny muted">${recon.suggestions.length ? 'More will match once the learned dates above are applied.' : 'None yet — set your bill dates (or accept the suggestions) and re-import.'}</p>`}
+      <p class="small" style="margin-top:12px">${recon.unmatched.filter((r) => r.amount < 0).length} other payments (day-to-day spending) will be added to your Bank view.</p>
+      <button class="btn primary block" data-a="confirmImport" style="margin-top:10px">Import</button>`;
+  }
+  const ordinal = (n) => n + (['th', 'st', 'nd', 'rd'][(n % 100 - 20) % 10] || ['th', 'st', 'nd', 'rd'][n % 100] || 'th');
   const statusPill = (s) => `<span class="pill ${s === 'paid' ? 'good' : s === 'confirmed' ? 'gold' : ''}">${s}</span>`;
   function fUpcoming() {
     const d = T.today(), occ = T.occurrences(d, T.addDays(d, 45));
@@ -729,7 +767,7 @@ Start by asking about whichever of my answers is weakest.`;
       <div class="card"><h3>Install on your phone</h3>${standalone ? '<p class="good small">✓ Running as an installed app.</p>' : `<p class="small" style="margin-top:0"><b>iPhone (Safari):</b> Share button → <i>Add to Home Screen</i>.<br><b>Android (Chrome):</b> ⋮ menu → <i>Install app</i> / <i>Add to Home screen</i>.</p>`}<p class="tiny muted">Requires The Key to be served over HTTPS (see README for a free 2-minute deploy).</p></div>
       <div class="card"><h3>Personal setup</h3><p class="small muted" style="margin-top:0">${S.settings.unlocked ? `Unlocked on ${T.fmtDate(S.settings.unlocked)}. Your edits since then live only on this device — keep backups.` : 'Your routine, meal plan, bills, lock-in and quotes are stored encrypted on the site. Unlock them with your passphrase.'}</p><button class="btn block" data-a="startUnlock">${S.settings.unlocked ? 'Re-load setup from encrypted file' : 'Unlock personal setup'}</button></div>
       <div class="card"><h3>Your data</h3><p class="small muted" style="margin-top:0">Everything is stored privately on this device only — nothing is sent anywhere. Back up regularly, and use the backup file to move to a new phone.</p><div class="stack"><button class="btn block" data-a="exportData">Export backup (.json)</button><label class="btn block ghost" style="cursor:pointer">Import backup<input type="file" accept="application/json,.json" data-c="importData" style="display:none"></label><button class="btn danger block" data-a="wipe">Delete all data</button></div></div>
-      <p class="tiny muted" style="text-align:center">The Key · v1.3 · local-first · ${h(S.settings.tagline)}</p>`;
+      <p class="tiny muted" style="text-align:center">The Key · v1.4 · local-first · ${h(S.settings.tagline)}</p>`;
   }
 
   /* ---------- UNLOCK ---------- */
@@ -861,6 +899,14 @@ Start by asking about whichever of my answers is weakest.`;
     quotesSheet: () => openSheet(sheetQuotes),
     delQuote: (el) => { if (!confirm('Delete this quote?')) return; S.myQuotes = S.myQuotes.filter((q) => q.id !== el.dataset.id); refresh(); },
     babyStep: (el) => { S.finance.babyStep = +el.dataset.n === S.finance.babyStep ? null : +el.dataset.n; refresh(); },
+    confirmImport: () => {
+      const P = ui.importPreview; if (!P) return;
+      const accepted = [...document.querySelectorAll('[data-sugg]')].filter((c) => c.checked).map((c) => P.recon.suggestions[+c.dataset.sugg]);
+      const res = T.applyImport(P.parsed, P.recon, accepted); ui.importPreview = null;
+      openSheet(() => `<div class="row between"><h2>Imported</h2><button class="icon-btn" data-a="closeSheet">${icon.x}</button></div><p>${res.added} new transactions added, ${res.matched} bills marked paid${accepted.length ? `, ${accepted.length} bill dates learned` : ''}.</p><h3>Now record today's balance</h3><p class="small muted" style="margin-top:0">Open the Barclays app and type in the balance it shows. Your forecast restarts from this real figure.</p><form data-f="anchor"><input type="hidden" name="date" value="${T.today()}"><input type="number" step="0.01" name="amount" inputmode="decimal" placeholder="Balance in £" required><button class="btn primary block" style="margin-top:10px">Save balance</button></form><button class="link" style="margin-top:12px" data-a="closeSheet">Skip for now</button>`);
+      refresh();
+    },
+    clearBank: () => { if (!confirm('Remove all imported bank transactions from this device? Bills already marked paid stay paid.')) return; S.finance.bank = []; for (const k in S.finance.overrides) delete S.finance.overrides[k].bankId; refresh(); },
     togglePass: (el) => { const i = document.getElementById('pp'); if (i) i.type = i.type === 'password' ? 'text' : 'password'; },
     skipUnlock: () => { ui.unlock = false; S.settings.unlockSkipped = true; save(); render(); },
     startUnlock: () => { ui.unlock = true; render(); },
@@ -875,7 +921,7 @@ Start by asking about whichever of my answers is weakest.`;
     study: (f, d) => { S.study.log.push({ id: T.uid(), date: d.date, course: d.course, kind: d.kind, min: T.num(d.min) || 0, pages: T.num(d.pages), note: d.note }); closeSheet(); refresh(); toast('Study logged'); },
     food: (f, d) => { const day = f.dataset.d; const m = d.mealId ? T.meal(d.mealId) : null; (S.nutrition.logs[day] = S.nutrition.logs[day] || []).push({ id: T.uid(), mealId: d.mealId || null, name: m ? m.name : d.name || 'Food', kcal: m ? null : T.num(d.kcal), p: m ? null : T.num(d.p), c: m ? null : T.num(d.c), f: m ? null : T.num(d.f), portion: +d.portion || 1, planned: false, time: d.time }); closeSheet(); refresh(); },
     body: (f, d) => { if (!d.weight && !d.waist && !d.bf) return toast('Enter at least one measurement'); S.body.push({ id: T.uid(), date: d.date, weight: T.num(d.weight), waist: T.num(d.waist), bf: T.num(d.bf), method: d.method }); refresh(); toast('Saved'); },
-    anchor: (f, d) => { S.finance.anchors.push({ id: T.uid(), date: d.date, amount: T.round2(+d.amount) }); refresh(); toast('Balance recorded'); },
+    anchor: (f, d) => { S.finance.anchors.push({ id: T.uid(), date: d.date, amount: T.round2(+d.amount) }); closeSheet(); refresh(); toast('Balance recorded — forecast updated'); },
     item: (f, d) => {
       const id = f.dataset.id || T.uid(); const old = S.finance.items.find((x) => x.id === id) || {};
       const it = { ...old, id, name: d.name, type: d.type, amount: T.round2(+d.amount), freq: d.freq, day: T.num(d.day), weekday: d.weekday === '' ? null : +d.weekday, date: d.date || null, variable: !!d.variable, src: old.src === 'handoff' && old.amount === T.round2(+d.amount) ? 'handoff' : 'you' };
@@ -902,6 +948,14 @@ Start by asking about whichever of my answers is weakest.`;
     histEx: (el) => { ui.histEx = el.value; render(); },
     portion: (el) => { const l = (S.nutrition.logs[el.dataset.d] || []).find((x) => x.id === el.dataset.id); if (l) l.portion = +el.value; refresh(); },
     swap: (el) => { const l = (S.nutrition.logs[el.dataset.d] || []).find((x) => x.id === el.dataset.id); if (l) { l.mealId = el.value; l.name = T.meal(el.value)?.name; } refresh(); },
+    bankFile: (el) => {
+      const file = el.files[0]; if (!file) return;
+      file.text().then((txt) => {
+        try { const parsed = T.parseBankCSV(txt); const recon = T.reconcile(parsed.rows); ui.importPreview = { parsed, recon }; openSheet(sheetImport); }
+        catch (e) { alert('Import failed: ' + e.message); }
+        el.value = '';
+      });
+    },
     importData: (el) => { const file = el.files[0]; if (!file) return; file.text().then((txt) => { try { const obj = JSON.parse(txt); if (!confirm('Replace all current data with this backup?')) return; T.importData(obj); S = T.S; render(); toast('Backup restored'); } catch (e) { alert('Import failed: ' + e.message); } }); },
   };
 

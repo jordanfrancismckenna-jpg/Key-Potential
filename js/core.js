@@ -234,8 +234,9 @@
      snapshot up to d, excluding items you marked paid on/before the snapshot date (already in the bank figure). */
   function projectedBalance(d) {
     const a = latestAnchor(d); if (!a) return null;
-    const occ = occurrences(addDays(a.date, 1), d).filter((o) => !(o.status === 'paid' && o.paidOn && o.paidOn <= a.date));
-    return { balance: round2(a.amount + occ.reduce((s, o) => s + o.amount, 0)), anchor: a, count: occ.length };
+    const occ = occurrences(addDays(a.date, 1), d).filter((o) => !(o.status === 'paid' && o.paidOn && o.paidOn <= a.date) && !(S.finance.overrides[o.key] || {}).bankId);
+    const bank = (S.finance.bank || []).filter((r) => r.date > a.date && r.date <= d);
+    return { balance: round2(a.amount + occ.reduce((s, o) => s + o.amount, 0) + bank.reduce((s, r) => s + r.amount, 0)), anchor: a, count: occ.length + bank.length };
   }
   function forecastSeries(from, days) {
     const out = []; for (let i = 0; i <= days; i++) { const d = addDays(from, i); const p = projectedBalance(d); out.push({ date: d, bal: p ? p.balance : null }); }
@@ -320,6 +321,111 @@
     return L.join('\r\n');
   }
 
+
+  /* ---------- bank statement import (Barclays CSV + generic) ---------- */
+  function parseCSVLine(line) {
+    const out = []; let cur = '', q = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (q) { if (ch === '"' && line[i + 1] === '"') { cur += '"'; i++; } else if (ch === '"') q = false; else cur += ch; }
+      else if (ch === '"') q = true; else if (ch === ',') { out.push(cur); cur = ''; } else cur += ch;
+    }
+    out.push(cur); return out;
+  }
+  const MONTHS = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+  function parseDate(s) {
+    s = String(s || '').trim();
+    let m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/); // UK day-first
+    if (m) { let y = +m[3]; if (y < 100) y += 2000; return `${y}-${String(+m[2]).padStart(2, '0')}-${String(+m[1]).padStart(2, '0')}`; }
+    m = s.match(/^(\d{4})-(\d{2})-(\d{2})/); if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+    m = s.match(/^(\d{1,2})\s+([A-Za-z]{3})[a-z]*\s+(\d{4})$/); if (m && MONTHS[m[2].toLowerCase()]) return `${m[3]}-${String(MONTHS[m[2].toLowerCase()]).padStart(2, '0')}-${String(+m[1]).padStart(2, '0')}`;
+    return null;
+  }
+  const money = (v) => { if (v == null) return null; const t = String(v).replace(/[£,\s]/g, ''); if (!t) return null; const n = parseFloat(t.replace(/^\((.*)\)$/, '-$1')); return isNaN(n) ? null : n; };
+  const clean = (s) => String(s || '').replace(/[\t\r]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
+  function hash(str) { let h = 5381; for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) >>> 0; return h.toString(36); }
+  function parseBankCSV(text) {
+    const lines = text.replace(/^﻿/, '').split(/\r?\n/).filter((l) => l.trim());
+    if (!lines.length) throw new Error('The file is empty.');
+    const head = parseCSVLine(lines[0]).map((x) => x.trim().toLowerCase());
+    const rows = [];
+    const isBarclays = head.includes('memo') && head.includes('subcategory') && head.includes('amount');
+    if (isBarclays) {
+      // Number,Date,Account,Amount,Subcategory,Memo — memo may contain unescaped commas, so re-join the tail
+      const iD = head.indexOf('date'), iA = head.indexOf('amount'), iS = head.indexOf('subcategory'), iM = head.indexOf('memo');
+      for (const l of lines.slice(1)) {
+        const f = parseCSVLine(l); if (f.length < iM + 1) continue;
+        const date = parseDate(f[iD]), amount = money(f[iA]);
+        if (!date || amount == null) continue;
+        rows.push({ date, amount, type: clean(f[iS]), desc: clean(f.slice(iM).join(',')) });
+      }
+    } else {
+      const find = (re) => head.findIndex((x) => re.test(x));
+      const iD = find(/^(transaction )?date|^date/), iDesc = find(/desc|memo|narrative|details|payee|reference|name/);
+      const iAmt = find(/^amount|^value|^amount \(gbp\)/), iIn = find(/paid in|money in|credit|^in$/), iOut = find(/paid out|money out|debit|^out$/);
+      const iT = find(/^type|subcategory|category/), iBal = find(/balance/);
+      if (iD < 0 || (iAmt < 0 && iIn < 0 && iOut < 0)) throw new Error('Could not find date and amount columns in this file.');
+      for (const l of lines.slice(1)) {
+        const f = parseCSVLine(l); const date = parseDate(f[iD]); if (!date) continue;
+        let amount = iAmt >= 0 ? money(f[iAmt]) : (money(f[iIn]) || 0) - Math.abs(money(f[iOut]) || 0);
+        if (amount == null || amount === 0 && iAmt >= 0) continue;
+        rows.push({ date, amount, type: iT >= 0 ? clean(f[iT]) : '', desc: iDesc >= 0 ? clean(f[iDesc]) : '', balance: iBal >= 0 ? money(f[iBal]) : null });
+      }
+    }
+    if (!rows.length) throw new Error('No transactions found. Is this a CSV export from your bank?');
+    const seen = {};
+    for (const r of rows) { const k = r.date + '|' + r.amount.toFixed(2) + '|' + r.desc; seen[k] = (seen[k] || 0) + 1; r.id = 'b' + hash(k + '#' + seen[k]); r.amount = round2(r.amount); }
+    rows.sort((a, b) => a.date.localeCompare(b.date));
+    return { rows, format: isBarclays ? 'Barclays' : 'CSV', from: rows[0].date, to: rows[rows.length - 1].date };
+  }
+  const words = (s) => String(s).toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length >= 3 && !['the', 'and', 'for', 'payment', 'repayment', 'allowance', 'monthly', 'bill', 'not', 'listed', 'other', 'commitments', 'itemised', 'handoff'].includes(w));
+  /* Match statement rows to scheduled bills/income. Returns matches (mark paid) and suggestions (learn dates). */
+  function reconcile(rows) {
+    const matches = [], suggestions = [], used = new Set();
+    const near = (a, b) => Math.abs(Math.abs(a) - Math.abs(b)) <= Math.max(1, Math.abs(b) * 0.01);
+    // 1) dated items: same sign, amount within 1% (or £1) and date within 4 days, or name match within 4 days
+    const from = addDays(rows[0].date, -6), to = addDays(rows[rows.length - 1].date, 6);
+    for (const o of occurrences(from, to).filter((o) => !o.manual && o.status !== 'paid')) {
+      const it = S.finance.items.find((i) => i.id === o.itemId); const kw = words(it.name);
+      const cand = rows.filter((r) => !used.has(r.id) && Math.sign(r.amount) === Math.sign(o.amount) && Math.abs(diffDays(o.date, r.date)) <= 4 && (near(r.amount, o.amount) || kw.some((w) => r.desc.toLowerCase().includes(w))))
+        .sort((a, b) => Math.abs(diffDays(o.date, a.date)) - Math.abs(diffDays(o.date, b.date)));
+      if (cand[0]) { used.add(cand[0].id); matches.push({ key: o.key, rowId: cand[0].id, name: o.name, date: cand[0].date, amount: cand[0].amount, expected: o.amount }); }
+    }
+    // 2) undated items: learn the payment day from amount (and name) matches
+    for (const it of undated()) {
+      const sign = it.type === 'income' ? 1 : -1, kw = words(it.name);
+      const hits = rows.filter((r) => Math.sign(r.amount) === sign && (near(r.amount, it.amount) || (kw.length && kw.some((w) => r.desc.toLowerCase().includes(w)) && Math.abs(Math.abs(r.amount) - it.amount) <= it.amount * 0.25)));
+      if (!hits.length) continue;
+      if (it.freq === 'weekly') {
+        const wd = {}; hits.forEach((r) => (wd[weekday(r.date)] = (wd[weekday(r.date)] || 0) + 1));
+        const best = Object.entries(wd).sort((a, b) => b[1] - a[1])[0];
+        suggestions.push({ itemId: it.id, name: it.name, field: 'weekday', value: +best[0], evidence: hits.slice(-3).map((r) => `${r.date}: ${r.desc} ${r.amount}`) });
+      } else if (it.freq === 'monthly') {
+        const dd = {}; hits.forEach((r) => { const d = +r.date.slice(8); dd[d] = (dd[d] || 0) + 1; });
+        const best = Object.entries(dd).sort((a, b) => b[1] - a[1] || a[0] - b[0])[0];
+        suggestions.push({ itemId: it.id, name: it.name, field: 'day', value: +best[0], evidence: hits.slice(-3).map((r) => `${r.date}: ${r.desc} ${r.amount}`), rows: hits.map((r) => r.id) });
+      }
+    }
+    const unmatched = rows.filter((r) => !used.has(r.id) && !suggestions.some((s) => (s.rows || []).includes(r.id)));
+    return { matches, suggestions, unmatched };
+  }
+  function applyImport(parsed, recon, acceptedSuggestions) {
+    const F = S.finance; F.bank = F.bank || []; F.imports = F.imports || [];
+    const have = new Set(F.bank.map((r) => r.id)); let added = 0;
+    for (const r of parsed.rows) if (!have.has(r.id)) { F.bank.push(r); added++; }
+    F.bank.sort((a, b) => a.date.localeCompare(b.date));
+    for (const s of acceptedSuggestions) { const it = F.items.find((i) => i.id === s.itemId); if (it) it[s.field] = s.value; }
+    // after learning dates, re-run matching so newly dated bills get marked paid too
+    const again = acceptedSuggestions.length ? reconcile(parsed.rows) : recon;
+    for (const m of again.matches) {
+      const ov = F.overrides[m.key] || {};
+      F.overrides[m.key] = { ...ov, status: 'paid', paidOn: m.date, bankId: m.rowId, date: m.date !== m.key.split('|')[1] ? m.date : ov.date, amount: Math.abs(m.amount) !== Math.abs(m.expected) ? Math.abs(m.amount) : ov.amount };
+    }
+    F.imports.push({ on: today(), format: parsed.format, from: parsed.from, to: parsed.to, rows: parsed.rows.length, added, matched: again.matches.length });
+    save();
+    return { added, matched: again.matches.length };
+  }
+
   /* ---------- encrypted personal setup (AES-256-GCM, key from PBKDF2-SHA256) ---------- */
   const b64 = (str) => Uint8Array.from(atob(str), (c) => c.charCodeAt(0));
   async function unlockPersonal(passphrase, url = 'personal.enc.json') {
@@ -341,7 +447,7 @@
     return S;
   }
 
-  window.TK = { unlockPersonal, KEY, uid, esc, clamp, round2, gbp, num, londonNow, today, addDays, diffDays, weekday, startOfWeek, daysInMonth, fmtDate, range, toD, fromD,
+  window.TK = { unlockPersonal, parseBankCSV, reconcile, applyImport, parseDate, KEY, uid, esc, clamp, round2, gbp, num, londonNow, today, addDays, diffDays, weekday, startOfWeek, daysInMonth, fmtDate, range, toD, fromD,
     load, save, resetAll, importData, get S() { return S; },
     currentCycle, cycleInfo, tpl, planFor, sessionsOn, runsOn, workSets, plannedSetCount, e1rm, exerciseHistory, suggestNext,
     dayType, meal, mealsPlanned, mealLogs, dayNutrition,

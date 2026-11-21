@@ -5,7 +5,7 @@ A private, phone-first personal operating system, built as an installable web ap
 - **The Key Rings:** a calendar with three daily rings (Workout, Diet, Reading)
 - **Training:** strength log with progression suggestions, runs and body metrics
 - **Nutrition:** meal plans, logging, consumed vs target, shopping list
-- **Finance:** dated cash-flow forecast, bank-balance reconciliation, Dave Ramsey's principles and a Baby Step tracker
+- **Finance:** dated cash-flow forecast, bank-balance reconciliation, **bank statement import** (Barclays CSV and generic CSV), Dave Ramsey's principles and a Baby Step tracker
 - **The Key Academy:** five 12-week university-style courses (Basic Economics, The Odyssey, Crime and Punishment, The Count of Monte Cristo, selected Scripture), with lectures, quizzes, Socratic questions and a spoiler guard
 - **The McKenna Gazette:** a daily vintage newspaper of insights, Scripture and the Great Conversation
 - **Lock-in and Progress:** a commitments reference, weekly reviews and cycles
@@ -40,7 +40,8 @@ This repository is public, but **no personal data is readable in it**.
 | Strength suggestions | ✅ Deterministic double-progression rules (advisory). Not AI |
 | AI tutor | ⚠️ "Copy AI tutor prompt" builds a spoiler-safe Socratic prompt to paste into Claude. A built-in tutor needs a backend |
 | Reminders | ⚠️ Calendar export (.ics) gives reliable alerts. In-app notifications fire only while the app is open |
-| Bank connection | ❌ Deliberately none |
+| Bank statement import | ✅ Barclays CSV (plus most UK CSVs). Parsed on-device; matches bills, learns bill dates, separates unplanned spending |
+| Live bank connection | ❌ Barclays has no personal API, and aggregators are paid and need a server. Statement import is used instead |
 
 ## Architecture
 
