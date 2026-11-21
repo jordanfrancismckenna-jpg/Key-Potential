@@ -79,7 +79,7 @@
     let out = top(`${greeting()}`, { eyebrow: 'The Key · ' + T.fmtDate(d, { weekday: 'long', day: 'numeric', month: 'long' }), right: `<a class="icon-btn" href="#/settings" aria-label="Settings">${icon.gear}</a>` });
     if (ci) {
       const left = T.diffDays(d, ci.end);
-      out += `<div class="card tight"><div class="row between"><div><div class="eyebrow">${h(ci.name)}</div><div class="serif" style="font-size:20px">${ci.active ? `Day ${ci.day} of ${ci.total} · Week ${ci.week}` : d < ci.start ? `Starts ${T.fmtDate(ci.start)}` : 'Cycle complete'}</div></div><div class="small muted" style="text-align:right">${ci.active ? `${left} days left<br>ends ${T.fmtDate(ci.end, { day: 'numeric', month: 'short' })}` : ''}</div></div><div class="bar" style="margin-top:10px"><i style="width:${Math.round(ci.pct * 100)}%"></i></div></div>`;
+      out += `<div class="card tight" data-a="cycleSheet" data-id="${ci.id}" style="cursor:pointer"><div class="row between"><div><div class="eyebrow">${h(ci.name)} <span style="opacity:.6">· edit</span></div><div class="serif" style="font-size:20px">${ci.active ? `Day ${ci.day} of ${ci.total} · Week ${ci.week}` : d < ci.start ? `Starts ${T.fmtDate(ci.start)}` : 'Cycle complete'}</div></div><div class="small muted" style="text-align:right">${ci.active ? `${left} days left<br>ends ${T.fmtDate(ci.end, { day: 'numeric', month: 'short' })}` : ''}</div></div><div class="bar" style="margin-top:10px"><i style="width:${Math.round(ci.pct * 100)}%"></i></div></div>`;
     }
     out += `<div class="card" data-a="openDay" data-d="${d}" style="cursor:pointer"><div class="card-head"><h3>Today's rings</h3><span class="link">Details ›</span></div><div class="rings-hero">${ringSVG(rg, 132, 12)}<div class="ring-legend">${ringLegend(rg)}</div></div></div>`;
 
@@ -644,7 +644,7 @@ Start by asking about whichever of my answers is weakest.`;
       const cd = T.range(ci.start, ci.end);
       out += `<div class="card"><h3>${h(ci.name)}</h3><p class="tiny muted" style="margin-top:0">Each square is one day. Brighter = more complete. Hatched = rest.</p>${['workout', 'diet', 'reading'].map((k) => `<div class="row" style="gap:2px;margin-top:6px;flex-wrap:wrap">${cd.map((d) => { const r = T.rings(d)[k]; const op = r.state === 'future' ? 0.05 : r.state === 'rest' ? 0.25 : 0.12 + 0.88 * r.pct; return `<span title="${d}" style="width:7px;height:12px;border-radius:2px;background:var(--${k});opacity:${op};${r.state === 'rest' ? 'background-image:repeating-linear-gradient(45deg,transparent 0 2px,#000 2px 3px)' : ''}"></span>`; }).join('')}</div>`).join('')}</div>`;
     }
-    out += `<div class="card"><div class="card-head"><h3>The Key Cycles</h3><button class="link" data-a="cycleSheet">+ New cycle</button></div><ul class="list">${S.cycles.map((c) => `<li class="row between"><span>${h(c.name)}</span><span class="small muted">${T.fmtDate(c.start, { day: 'numeric', month: 'short', year: '2-digit' })} – ${T.fmtDate(c.end, { day: 'numeric', month: 'short', year: '2-digit' })}</span></li>`).join('')}</ul><p class="tiny muted">New cycles keep all history. Rings and trends here show patterns, not proof of cause and effect.</p></div>`;
+    out += `<div class="card"><div class="card-head"><h3>The Key Cycles</h3><button class="link" data-a="cycleSheet">+ New cycle</button></div><ul class="list">${S.cycles.map((c) => `<li class="row between" data-a="cycleSheet" data-id="${c.id}" style="cursor:pointer"><span>${h(c.name)} <span class="tiny gold">Edit</span></span><span class="small muted">${T.fmtDate(c.start, { day: 'numeric', month: 'short', year: '2-digit' })} – ${T.fmtDate(c.end, { day: 'numeric', month: 'short', year: '2-digit' })}</span></li>`).join('')}</ul><p class="tiny muted">New cycles keep all history. Rings and trends here show patterns, not proof of cause and effect.</p></div>`;
     return out;
   }
   function legSets(sess) {
@@ -752,6 +752,19 @@ Start by asking about whichever of my answers is weakest.`;
       <form data-f="quote"><label class="f">Add a quote</label><textarea name="text" required></textarea><input type="text" name="by" placeholder="Attribution (optional)" style="margin-top:8px"><button class="btn primary block" style="margin-top:10px">Add quote</button></form>`;
   }
 
+  function sheetCycle(id) {
+    const c = id ? S.cycles.find((x) => x.id === id) : null;
+    const last = S.cycles[S.cycles.length - 1];
+    const start = c ? c.start : T.addDays(last.end, 1), end = c ? c.end : T.addDays(start, 83);
+    const len = T.diffDays(start, end) + 1;
+    return `<div class="row between"><h2>${c ? 'Edit cycle' : 'New cycle'}</h2><button class="icon-btn" data-a="closeSheet">${icon.x}</button></div>
+      <form data-f="cycle" data-id="${c ? c.id : ''}"><label class="f">Name</label><input type="text" name="name" value="${h(c ? c.name : 'Cycle ' + (S.cycles.length + 1))}" required>
+      <div class="grid2"><div><label class="f">Start date</label><input type="date" name="start" id="cyStart" value="${start}" required></div><div><label class="f">End date</label><input type="date" name="end" id="cyEnd" value="${end}" required></div></div>
+      <label class="f">Quick length</label><div class="row wrap" style="gap:6px">${[4, 8, 12, 16].map((w) => `<button type="button" class="btn sm" data-a="cycleWeeks" data-w="${w}">${w} weeks</button>`).join('')}</div>
+      <p class="small muted" id="cyInfo">${len} days${c && T.today() >= c.start && T.today() <= c.end ? ` · today is day ${T.diffDays(c.start, T.today()) + 1}` : ''}</p>
+      <p class="tiny muted">Changing dates only changes how days are counted. Your logged workouts, meals and study stay exactly as they are.</p>
+      <div class="row" style="margin-top:12px">${c ? `<button type="button" class="btn danger" data-a="delCycle" data-id="${c.id}">Delete</button>` : ''}<button class="btn primary grow">Save</button></div></form>`;
+  }
   /* ---------- MORE / SETTINGS ---------- */
   function vMore() {
     const tiles = [['#/nutrition', '🍽', 'Nutrition', 'Meal plan, log & shopping'], ['#/finance', '💷', 'Finance', 'Bills, payday & forecast'], ['#/lockin', '🗝', 'Lock-in', 'Your commitments'], ['#/progress', '📈', 'Progress', 'Weekly review & cycles'], ['#/discover', '📰', 'The McKenna Gazette', 'Your daily paper'], ['#/conversation', '✦', 'Great Conversation', 'Themes across books'], ['#/settings', '⚙️', 'Settings', 'Backup, reminders, install']];
@@ -883,7 +896,8 @@ Start by asking about whichever of my answers is weakest.`;
     setTheme: (el) => { ui.theme = el.dataset.t; if (location.hash !== '#/conversation') location.hash = '#/conversation'; else render(); },
     tutorPrompt: async (el) => { const txt = tutorPrompt(el.dataset.c, +el.dataset.i); try { await navigator.clipboard.writeText(txt); toast('Tutor prompt copied — paste it into Claude'); } catch (e) { openSheet(() => `<h2>Tutor prompt</h2><textarea style="min-height:300px">${h(txt)}</textarea><button class="btn block" data-a="closeSheet">Close</button>`); } },
     progMove: (el) => { ui.progWeek = T.addDays(ui.progWeek || T.startOfWeek(T.today()), +el.dataset.n); render(); },
-    cycleSheet: () => openSheet(() => `<div class="row between"><h2>New cycle</h2><button class="icon-btn" data-a="closeSheet">${icon.x}</button></div><form data-f="cycle"><label class="f">Name</label><input type="text" name="name" value="Cycle ${S.cycles.length + 1}" required><div class="grid2"><div><label class="f">Start</label><input type="date" name="start" value="${T.addDays(S.cycles[S.cycles.length - 1].end, 1)}" required></div><div><label class="f">Weeks</label><input type="number" name="weeks" value="12" min="1" max="52"></div></div><button class="btn primary block" style="margin-top:12px">Create</button></form>`),
+    cycleSheet: (el) => { const id = el && el.dataset ? el.dataset.id : null; openSheet(() => sheetCycle(id)); },
+    delCycle: (el) => { if (S.cycles.length < 2) return toast('You need at least one cycle'); if (!confirm('Delete this cycle? Your logged data is kept.')) return; S.cycles = S.cycles.filter((c) => c.id !== el.dataset.id); closeSheet(); refresh(); },
     ics: (el) => { const w = el.dataset.w; const o = w === 'all' ? {} : { bills: w === 'bills', meals: w === 'meals', training: w === 'training' }; T.download(`the-key-${w}.ics`, T.buildICS(o), 'text/calendar'); toast('Open the file to add it to your calendar'); },
     notif: async () => {
       if (!('Notification' in window)) return toast('Notifications aren\'t supported here. Use the calendar export.');
@@ -907,6 +921,7 @@ Start by asking about whichever of my answers is weakest.`;
       refresh();
     },
     clearBank: () => { if (!confirm('Remove all imported bank transactions from this device? Bills already marked paid stay paid.')) return; S.finance.bank = []; for (const k in S.finance.overrides) delete S.finance.overrides[k].bankId; refresh(); },
+    cycleWeeks: (el) => { const st = document.getElementById('cyStart').value; if (!st) return; const en = T.addDays(st, +el.dataset.w * 7 - 1); document.getElementById('cyEnd').value = en; document.getElementById('cyInfo').textContent = (T.diffDays(st, en) + 1) + ' days'; },
     togglePass: (el) => { const i = document.getElementById('pp'); if (i) i.type = i.type === 'password' ? 'text' : 'password'; },
     skipUnlock: () => { ui.unlock = false; S.settings.unlockSkipped = true; save(); render(); },
     startUnlock: () => { ui.unlock = true; render(); },
@@ -938,7 +953,12 @@ Start by asking about whichever of my answers is weakest.`;
       catch (e) { err.textContent = e.message; btn.disabled = false; btn.textContent = 'Unlock my setup'; }
     },
     quote: (f, d) => { (S.myQuotes = S.myQuotes || []).push({ id: T.uid(), text: d.text.trim(), by: d.by.trim() }); refresh(); toast('Quote added'); },
-    cycle: (f, d) => { const w = Math.max(1, +d.weeks || 12); S.cycles.push({ id: T.uid(), name: d.name, start: d.start, end: T.addDays(d.start, w * 7 - 1) }); S.cycles.sort((a, b) => a.start.localeCompare(b.start)); closeSheet(); refresh(); },
+    cycle: (f, d) => {
+      if (!d.start || !d.end || d.end < d.start) return toast('End date must be on or after the start date');
+      const id = f.dataset.id, c = id ? S.cycles.find((x) => x.id === id) : null;
+      if (c) Object.assign(c, { name: d.name.trim() || c.name, start: d.start, end: d.end }); else S.cycles.push({ id: T.uid(), name: d.name.trim() || 'Cycle', start: d.start, end: d.end });
+      S.cycles.sort((x, y) => x.start.localeCompare(y.start)); closeSheet(); refresh(); toast(c ? 'Cycle updated' : 'Cycle created');
+    },
   };
 
   /* ---------- change handlers ---------- */
