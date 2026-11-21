@@ -660,7 +660,7 @@ Start by asking about whichever of my answers is weakest.`;
     return out;
   }
   function legSets(sess) {
-    const re = /squat|lunge|leg|calf|hip thrust|deadlift|step-up|split/i, core = /plank|crunch|ab |ab wheel|leg raise|pallof|dead bug|core|carry|hang/i;
+    const re = /squat|lunge|leg|calf|hip thrust|deadlift|step-up|split|good morning|swing|hamstring/i, core = /plank|crunch|ab |ab wheel|leg raise|pallof|dead bug|core|carry|hang/i;
     let l = 0, c = 0; for (const s of sess) for (const e of s.exercises) { const n = e.sets.filter((x) => x.done && !x.warmup).length; if (re.test(e.name)) l += n; if (core.test(e.name)) c += n; }
     return `<p class="small muted" style="margin-bottom:0">Priority focus this cycle — <b style="color:var(--text)">${l}</b> leg sets · <b style="color:var(--text)">${c}</b> core sets this week (matched by exercise name).</p>`;
   }
@@ -792,7 +792,7 @@ Start by asking about whichever of my answers is weakest.`;
       <div class="card"><h3>Install on your phone</h3>${standalone ? '<p class="good small">✓ Running as an installed app.</p>' : `<p class="small" style="margin-top:0"><b>iPhone (Safari):</b> Share button → <i>Add to Home Screen</i>.<br><b>Android (Chrome):</b> ⋮ menu → <i>Install app</i> / <i>Add to Home screen</i>.</p>`}<p class="tiny muted">Requires The Key to be served over HTTPS (see README for a free 2-minute deploy).</p></div>
       <div class="card"><h3>Personal setup</h3><p class="small muted" style="margin-top:0">${S.settings.unlocked ? `Unlocked on ${T.fmtDate(S.settings.unlocked)}. Your edits since then live only on this device — keep backups.` : 'Your routine, meal plan, bills, lock-in and quotes are stored encrypted on the site. Unlock them with your passphrase.'}</p><button class="btn block" data-a="startUnlock">${S.settings.unlocked ? 'Re-load setup from encrypted file' : 'Unlock personal setup'}</button></div>
       <div class="card"><h3>Your data</h3><p class="small muted" style="margin-top:0">Everything is stored privately on this device only — nothing is sent anywhere. Back up regularly, and use the backup file to move to a new phone.</p><div class="stack"><button class="btn block" data-a="exportData">Export backup (.json)</button><label class="btn block ghost" style="cursor:pointer">Import backup<input type="file" accept="application/json,.json" data-c="importData" style="display:none"></label><button class="btn danger block" data-a="wipe">Delete all data</button></div></div>
-      <p class="tiny muted" style="text-align:center">The Key · v1.6 · local-first · ${h(S.settings.tagline)}</p>`;
+      <p class="tiny muted" style="text-align:center">The Key · v1.7 · local-first · ${h(S.settings.tagline)}</p>`;
   }
 
   /* ---------- UNLOCK ---------- */
@@ -840,7 +840,7 @@ Start by asking about whichever of my answers is weakest.`;
       exercises: (t ? t.exercises : []).map((e) => {
         const hist = T.exerciseHistory(e.name); const last = hist[hist.length - 1];
         const base = last ? last.sets : e.sets;
-        return { name: e.name, note: e.note || '', sets: base.map((x) => ({ w: x.w, r: x.r, rpe: null, done: false, warmup: false })) };
+        return { name: e.name, note: e.note || '', sets: base.map((x, i) => ({ w: x.w, r: x.r, rpe: null, done: false, warmup: !!(e.sets[i] && e.sets[i].warmup) })) };
       }) };
     S.sessions.push(s); save(); return s;
   }
