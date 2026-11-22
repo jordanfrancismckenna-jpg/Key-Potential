@@ -229,3 +229,8 @@ body.locked nav.tabs { display: none; }
 .unlock-key { width: 132px; height: 132px; border-radius: 34px; background: radial-gradient(circle at 50% 40%, #1b2540, #0b1120); border: 1px solid var(--line); display: grid; place-items: center; box-shadow: 0 0 60px rgba(212,166,74,.15); }
 .unlock-form { width: 100%; max-width: 380px; text-align: left; margin-top: 22px; }
 .unlock .link { color: var(--muted); text-decoration: underline; }
+
+/* guitar */
+.guitar-head { background: linear-gradient(180deg, var(--card), var(--bg2)); border: 1px solid var(--line); border-radius: var(--r); padding: 12px 14px; margin-bottom: 10px; }
+.guitar-frame { display: block; width: calc(100% + 32px); margin: 0 -16px; border: 0; height: calc(100dvh - 300px - var(--safeB)); min-height: 520px; background: #fff; border-radius: 14px 14px 0 0; }
+body.on-guitar #app { padding-bottom: calc(70px + var(--safeB)); }

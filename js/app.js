@@ -115,6 +115,7 @@
     out += homeMoney(d);
 
     // lock-in strip
+    out += `<a class="card tight" href="#/guitar" style="display:block;text-decoration:none;color:inherit"><div class="row between"><div><div class="eyebrow">🎸 Guitar</div><div class="small">${gMinutes(d)} / ${G().goal} min today${G().running ? ' · <span class="good">timer running</span>' : ''}${gStreak() ? ` · 🔥 ${gStreak()} days` : ''}</div></div><span class="link">Practise ›</span></div></a>`;
     out += `<a class="card tight" href="#/lockin" style="display:block;text-decoration:none;color:inherit"><div class="row between"><div class="eyebrow">Lock-in</div><span class="link">Reference ›</span></div><div class="row wrap" style="margin-top:8px;gap:6px">${((S.personal && S.personal.lockin) || []).filter((x) => !/gym|counsel/i.test(x.k)).map((x) => `<span class="pill">${h(x.k)} · ${h(x.d)}</span>`).join('') || '<span class="small muted">Unlock your personal setup to see your commitments.</span>'}</div></a>`;
     return out;
   }
@@ -646,6 +647,8 @@ Start by asking about whichever of my answers is weakest.`;
     const meals = days.reduce((a, d) => a + T.mealLogs(d).length, 0), planned = days.filter((d) => d <= T.today()).reduce((a, d) => a + T.mealsPlanned(d).length, 0);
     const kc = days.map((d) => T.dayNutrition(d)).filter((n) => n.count && !n.unknown);
     out += `<div class="card"><h3>Nutrition</h3><div class="grid2" style="margin-top:10px"><div class="kpi"><div class="v">${meals}/${planned}</div><div class="l">Meals logged</div></div><div class="kpi"><div class="v">${kc.length ? Math.round(kc.reduce((a, n) => a + n.kcal, 0) / kc.length).toLocaleString() : '—'}</div><div class="l">Avg kcal (complete days)</div></div></div></div>`;
+    const gm = days.reduce((a, d) => a + gMinutes(d), 0), gdays = days.filter((d) => gMinutes(d) >= G().goal).length;
+    out += `<div class="card"><h3>🎸 Guitar</h3><div class="grid2" style="margin-top:10px"><div class="kpi"><div class="v">${gm}</div><div class="l">Minutes</div></div><div class="kpi"><div class="v">${gdays}/7</div><div class="l">Days at 30 min</div></div></div></div>`;
     const sm = days.reduce((a, d) => a + T.studyMinutes(d), 0);
     out += `<div class="card"><h3>Study</h3><div class="grid2" style="margin-top:10px"><div class="kpi"><div class="v">${sm}</div><div class="l">Minutes</div></div><div class="kpi"><div class="v">${Math.round(sm / 60 * 10) / 10}h</div><div class="l">Hours</div></div></div></div>`;
     const bw = [...S.body].filter((x) => x.weight).sort((a, b) => a.date.localeCompare(b.date));
@@ -777,9 +780,32 @@ Start by asking about whichever of my answers is weakest.`;
       <p class="tiny muted">Changing dates only changes how days are counted. Your logged workouts, meals and study stay exactly as they are.</p>
       <div class="row" style="margin-top:12px">${c ? `<button type="button" class="btn danger" data-a="delCycle" data-id="${c.id}">Delete</button>` : ''}<button class="btn primary grow">Save</button></div></form>`;
   }
+  /* ---------- GUITAR (your CAGED Practice app, embedded unchanged) ---------- */
+  const G = () => (S.guitar = S.guitar || { log: [], running: null, goal: 30 });
+  const gElapsed = () => { const g = G(); if (!g.running) return 0; return (g.running.acc || 0) + (g.running.since ? Date.now() - g.running.since : 0); };
+  const gMinutes = (d) => G().log.filter((x) => x.date === d).reduce((a, x) => a + x.min, 0);
+  function gStreak() { let n = 0, d = T.today(); if (gMinutes(d) < G().goal) d = T.addDays(d, -1); while (gMinutes(d) >= G().goal) { n++; d = T.addDays(d, -1); } return n; }
+  const mmss = (ms) => { const s = Math.floor(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+  function vGuitar() {
+    const g = G(), d = T.today(), today = gMinutes(d), ws = T.startOfWeek(d);
+    const week = T.range(ws, T.addDays(ws, 6)).map((x) => ({ x, m: gMinutes(x) }));
+    const run = g.running, paused = run && !run.since;
+    let out = `<div class="guitar-head"><div class="row between"><div><div class="eyebrow">Guitar · CAGED</div><div class="serif" style="font-size:22px">${today} / ${g.goal} min today</div><div class="tiny muted">${gStreak() ? `🔥 ${gStreak()}-day streak` : 'Practise 30 minutes to start a streak'} · ${week.reduce((a, w) => a + w.m, 0)} min this week</div></div>
+      <div style="text-align:right"><div id="gTimer" class="serif" style="font-size:26px;font-variant-numeric:tabular-nums;color:${run && !paused ? 'var(--reading)' : 'var(--muted)'}">${mmss(gElapsed())}</div>
+      <div class="row" style="gap:6px;justify-content:flex-end;margin-top:4px">${!run ? `<button class="btn primary sm" data-a="gStart">▶ Start</button>` : `${paused ? `<button class="btn sm" data-a="gResume">▶</button>` : `<button class="btn sm" data-a="gPause">❚❚</button>`}<button class="btn primary sm" data-a="gFinish">Finish</button>`}</div></div></div>
+      <div class="row" style="gap:4px;margin-top:10px">${week.map((w) => `<div style="flex:1;text-align:center"><div style="height:6px;border-radius:3px;background:${w.m >= g.goal ? 'var(--gold)' : w.m ? 'var(--goldDim)' : 'var(--line)'}"></div><div class="tiny faint" style="margin-top:2px">${WD[T.weekday(w.x)][0]}</div></div>`).join('')}</div>
+      <div class="row between" style="margin-top:8px"><button class="link small" data-a="gManual">+ Log minutes manually</button><a class="link small" href="guitar/index.html" target="_blank" rel="noopener">Open full screen ↗</a></div></div>
+      <iframe class="guitar-frame" src="guitar/index.html" title="CAGED Practice" allow="autoplay"></iframe>`;
+    return out;
+  }
+  function gRefreshHead() { const head = document.querySelector('.guitar-head'); if (!head) return; const tmp = document.createElement('div'); tmp.innerHTML = vGuitar(); head.replaceWith(tmp.querySelector('.guitar-head')); gTimerLoop(); }
+  let gTick = null;
+  function gTimerLoop() { clearInterval(gTick); gTick = setInterval(() => { const el = document.getElementById('gTimer'); if (!el) return; el.textContent = mmss(gElapsed()); }, 1000); }
+  function gLog(min, date) { if (min <= 0) return; G().log.push({ id: T.uid(), date: date || T.today(), min }); }
+
   /* ---------- MORE / SETTINGS ---------- */
   function vMore() {
-    const tiles = [['#/nutrition', '🍽', 'Nutrition', 'Meal plan, log & shopping'], ['#/finance', '💷', 'Finance', 'Bills, payday & forecast'], ['#/lockin', '🗝', 'Lock-in', 'Your commitments'], ['#/progress', '📈', 'Progress', 'Weekly review & cycles'], ['#/discover', '📰', 'The McKenna Gazette', 'Your daily paper'], ['#/conversation', '✦', 'Great Conversation', 'Themes across books'], ['#/settings', '⚙️', 'Settings', 'Backup, reminders, install']];
+    const tiles = [['#/nutrition', '🍽', 'Nutrition', 'Meal plan, log & shopping'], ['#/finance', '💷', 'Finance', 'Bills, payday & forecast'], ['#/guitar', '🎸', 'Guitar', 'CAGED practice & metronome'], ['#/lockin', '🗝', 'Lock-in', 'Your commitments'], ['#/progress', '📈', 'Progress', 'Weekly review & cycles'], ['#/discover', '📰', 'The McKenna Gazette', 'Your daily paper'], ['#/conversation', '✦', 'Great Conversation', 'Themes across books'], ['#/settings', '⚙️', 'Settings', 'Backup, reminders, install']];
     return top('More', { eyebrow: 'The Key' }) + `<div class="grid2">${tiles.map(([href, e, t, s]) => `<a class="card" href="${href}" style="text-decoration:none;color:inherit;margin:0"><div style="font-size:26px">${e}</div><div style="font-weight:700;margin-top:6px">${t}</div><div class="tiny muted">${s}</div></a>`).join('')}</div>`;
   }
   function vSettings() {
@@ -792,7 +818,7 @@ Start by asking about whichever of my answers is weakest.`;
       <div class="card"><h3>Install on your phone</h3>${standalone ? '<p class="good small">✓ Running as an installed app.</p>' : `<p class="small" style="margin-top:0"><b>iPhone (Safari):</b> Share button → <i>Add to Home Screen</i>.<br><b>Android (Chrome):</b> ⋮ menu → <i>Install app</i> / <i>Add to Home screen</i>.</p>`}<p class="tiny muted">Requires The Key to be served over HTTPS (see README for a free 2-minute deploy).</p></div>
       <div class="card"><h3>Personal setup</h3><p class="small muted" style="margin-top:0">${S.settings.unlocked ? `Unlocked on ${T.fmtDate(S.settings.unlocked)}. Your edits since then live only on this device — keep backups.` : 'Your routine, meal plan, bills, lock-in and quotes are stored encrypted on the site. Unlock them with your passphrase.'}</p><button class="btn block" data-a="startUnlock">${S.settings.unlocked ? 'Re-load setup from encrypted file' : 'Unlock personal setup'}</button></div>
       <div class="card"><h3>Your data</h3><p class="small muted" style="margin-top:0">Everything is stored privately on this device only — nothing is sent anywhere. Back up regularly, and use the backup file to move to a new phone.</p><div class="stack"><button class="btn block" data-a="exportData">Export backup (.json)</button><label class="btn block ghost" style="cursor:pointer">Import backup<input type="file" accept="application/json,.json" data-c="importData" style="display:none"></label><button class="btn danger block" data-a="wipe">Delete all data</button></div></div>
-      <p class="tiny muted" style="text-align:center">The Key · v1.7 · local-first · ${h(S.settings.tagline)}</p>`;
+      <p class="tiny muted" style="text-align:center">The Key · v1.8 · local-first · ${h(S.settings.tagline)}</p>`;
   }
 
   /* ---------- UNLOCK ---------- */
@@ -812,8 +838,8 @@ Start by asking about whichever of my answers is weakest.`;
   function render() {
     S = T.S;
     const r = route();
-    const map = { home: vHome, calendar: vCalendar, training: vTraining, academy: vAcademy, more: vMore, nutrition: vNutrition, finance: vFinance, lockin: vLockin, progress: vProgress, settings: vSettings, session: () => vSession(r.args[0]), template: () => vTemplate(r.args[0]), course: () => vCourse(r.args[0]), module: () => vModule(r.args[0], r.args[1]), conversation: vConversation, discover: vDiscover };
-    const tabOf = { session: 'training', template: 'training', course: 'academy', module: 'academy', conversation: 'academy', nutrition: 'more', finance: 'more', lockin: 'more', progress: 'more', settings: 'more' };
+    const map = { home: vHome, calendar: vCalendar, training: vTraining, academy: vAcademy, more: vMore, nutrition: vNutrition, finance: vFinance, lockin: vLockin, progress: vProgress, settings: vSettings, session: () => vSession(r.args[0]), template: () => vTemplate(r.args[0]), course: () => vCourse(r.args[0]), module: () => vModule(r.args[0], r.args[1]), conversation: vConversation, discover: vDiscover, guitar: vGuitar };
+    const tabOf = { session: 'training', template: 'training', course: 'academy', module: 'academy', conversation: 'academy', nutrition: 'more', finance: 'more', lockin: 'more', progress: 'more', settings: 'more', guitar: 'more' };
     document.body.classList.toggle('locked', !!ui.unlock);
     if (ui.unlock) { $app.innerHTML = vUnlock(); renderSheet(); return; }
     const y = window.scrollY, same = render.last === location.hash;
@@ -821,6 +847,7 @@ Start by asking about whichever of my answers is weakest.`;
     render.last = location.hash;
     if (!same) window.scrollTo(0, 0); else window.scrollTo(0, y);
     document.querySelectorAll('nav.tabs a').forEach((a) => a.classList.toggle('on', a.dataset.tab === (tabOf[r.name] || r.name)));
+    document.body.classList.toggle('on-guitar', r.name === 'guitar'); if (r.name === 'guitar') gTimerLoop(); else clearInterval(gTick);
     renderSheet();
   }
   function renderSheet() {
@@ -935,6 +962,11 @@ Start by asking about whichever of my answers is weakest.`;
     clearBank: () => { if (!confirm('Remove all imported bank transactions from this device? Bills already marked paid stay paid.')) return; S.finance.bank = []; for (const k in S.finance.overrides) delete S.finance.overrides[k].bankId; refresh(); },
     cycleWeeks: (el) => { const st = document.getElementById('cyStart').value; if (!st) return; const en = T.addDays(st, +el.dataset.w * 7 - 1); document.getElementById('cyEnd').value = en; document.getElementById('cyInfo').textContent = (T.diffDays(st, en) + 1) + ' days'; },
     updateSheet: () => openSheet(() => `<div class="row between"><h2>Apply setup update</h2><button class="icon-btn" data-a="closeSheet">${icon.x}</button></div><p class="small">${h(ui.update?.note || '')}</p><p class="small muted">This merges the new data into your app. Your logged workouts, meals, study, money and edits all stay.</p><form data-f="applyUpdate"><label class="f">Passphrase</label><input type="password" name="pass" id="pp" autocapitalize="none" autocorrect="off" spellcheck="false" required><div id="unlockErr" class="small bad" style="min-height:20px;margin-top:8px"></div><button class="btn primary block">Apply update</button></form>`),
+    gStart: () => { G().running = { since: Date.now(), acc: 0, date: T.today() }; save(); gRefreshHead(); },
+    gPause: () => { const r = G().running; if (!r) return; r.acc += Date.now() - r.since; r.since = null; save(); gRefreshHead(); },
+    gResume: () => { const r = G().running; if (!r) return; r.since = Date.now(); save(); gRefreshHead(); },
+    gFinish: () => { const r = G().running; if (!r) return; const min = Math.round(gElapsed() / 60000); gLog(min, r.date); G().running = null; save(); gRefreshHead(); toast(min ? `Logged ${min} min of guitar` : 'Under a minute — not logged'); },
+    gManual: () => openSheet(() => `<div class="row between"><h2>Log guitar practice</h2><button class="icon-btn" data-a="closeSheet">${icon.x}</button></div><form data-f="guitar"><div class="grid2"><div><label class="f">Date</label><input type="date" name="date" value="${T.today()}"></div><div><label class="f">Minutes</label><input type="number" name="min" value="30" min="1" required></div></div><button class="btn primary block" style="margin-top:12px">Log</button></form>`),
     togglePass: (el) => { const i = document.getElementById('pp'); if (i) i.type = i.type === 'password' ? 'text' : 'password'; },
     skipUnlock: () => { ui.unlock = false; S.settings.unlockSkipped = true; save(); render(); },
     startUnlock: () => { ui.unlock = true; render(); },
@@ -970,6 +1002,7 @@ Start by asking about whichever of my answers is weakest.`;
       try { await T.unlockPersonal(d.pass, 'personal.enc.json', { merge: true }); S = T.S; ui.update = null; closeSheet(); refresh(); toast('Update applied'); }
       catch (e) { err.textContent = e.message; btn.disabled = false; btn.textContent = 'Apply update'; }
     },
+    guitar: (f, d) => { gLog(Math.max(0, Math.round(+d.min || 0)), d.date); save(); closeSheet(); gRefreshHead(); toast('Practice logged'); },
     quote: (f, d) => { (S.myQuotes = S.myQuotes || []).push({ id: T.uid(), text: d.text.trim(), by: d.by.trim() }); refresh(); toast('Quote added'); },
     cycle: (f, d) => {
       if (!d.start || !d.end || d.end < d.start) return toast('End date must be on or after the start date');
@@ -1043,7 +1076,7 @@ Start by asking about whichever of my answers is weakest.`;
 
   /* ---------- boot ---------- */
   window.addEventListener('hashchange', () => { ui.sheet = null; render(); });
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) render(); });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && route().name !== 'guitar') render(); });
   if (FIRST_RUN) ui.unlock = true;
   async function checkUpdate() { if (!S.settings.unlocked || ui.unlock) return; const hd = await T.personalHeader(); if (hd && hd.rev > (S.settings.personalRev || 0)) { ui.update = hd; if (!ui.sheet) render(); } }
   setTimeout(checkUpdate, 1200);
