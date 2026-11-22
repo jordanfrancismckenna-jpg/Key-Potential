@@ -98,7 +98,7 @@
   }
   function vHome() {
     const d = T.today(), ci = T.cycleInfo(d), rg = T.rings(d), tasks = todayTasks(d);
-    let out = `<div class="today-top"><div><div class="eyebrow">${T.fmtDate(d, { weekday: 'long', day: 'numeric', month: 'long' })}${ci && ci.active ? ` · Day ${ci.day}/${ci.total}` : ''}</div><h1>${greeting()}</h1></div><a class="icon-btn" href="#/settings" aria-label="Settings">${icon.gear}</a></div>`;
+    let out = `<div class="today-top"><div><div class="eyebrow">${T.fmtDate(d, { weekday: 'long', day: 'numeric', month: 'long' })}${ci && ci.active ? ` · Day ${ci.day}/${ci.total}` : ''}</div><h1>${greeting()}</h1></div><a class="icon-btn more-btn" href="#/more" aria-label="More">${TAB_DEFS.more.icon}</a></div>`;
     if (ui.update) out += `<div class="card tight upd" data-a="updateSheet"><div class="row between"><div><div class="eyebrow">Setup update available</div><div class="small">${h(ui.update.note || 'New data for your personal setup')}</div></div><span class="btn primary sm">Apply</span></div></div>`;
     out += backupNudge();
     // NOW card
@@ -924,12 +924,15 @@ Start by asking about whichever of my answers is weakest.`;
   /* ---------- MORE / SETTINGS ---------- */
   function vMore() {
     const tiles = [['#/nutrition', '🍽', 'Nutrition', 'Meal plan, log & shopping'], ['#/finance', '💷', 'Finance', 'Safe to spend, bills & bank import'], ['#/discover', '📰', 'The McKenna Gazette', 'Your daily paper'], ['#/guitar', '🎸', 'Guitar', 'CAGED practice & metronome'], ['#/progress', '📈', 'Progress', 'Weekly review & cycles'], ['#/lockin', '🗝', 'Lock-in', 'Your commitments'], ['#/conversation', '✦', 'Great Conversation', 'Themes across books'], ['#/settings', '⚙️', 'Settings', 'Backup, reminders, install']];
-    return top('More', { eyebrow: 'The Key' }) + `<div class="grid2">${tiles.map(([href, e, t, s]) => `<a class="card" href="${href}" style="text-decoration:none;color:inherit;margin:0"><div style="font-size:26px">${e}</div><div style="font-weight:700;margin-top:6px">${t}</div><div class="tiny muted">${s}</div></a>`).join('')}</div>`;
+    const extra = [['#/academy', '🎓', 'The Key Academy', 'Five 12-week courses'], ['#/training', '🏋️', 'Training', 'Sessions, runs & body'], ['#/calendar', '◎', 'The Key Rings', 'Calendar of your rings']].filter(([href]) => !myTabs().some((k) => TAB_DEFS[k].href === href));
+    tiles.splice(0, 0, ...tiles.splice(0).filter(([href]) => !myTabs().some((k) => TAB_DEFS[k].href === href)), ...extra);
+    return top('More', { eyebrow: 'The Key', back: '#/home' }) + `<div class="grid2">${tiles.map(([href, e, t, s]) => `<a class="card" href="${href}" style="text-decoration:none;color:inherit;margin:0"><div style="font-size:26px">${e}</div><div style="font-weight:700;margin-top:6px">${t}</div><div class="tiny muted">${s}</div></a>`).join('')}</div>`;
   }
   function vSettings() {
     const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
     const perm = 'Notification' in window ? Notification.permission : 'unsupported';
     return top('Settings', { back: '#/more', eyebrow: 'The Key' }) + `
+      <div class="card"><h3>Tab bar</h3><p class="small muted" style="margin-top:0">Choose up to 6 tabs. Everything else is under the ⊞ More button at the top of Today.</p><div class="row wrap" style="gap:6px">${TAB_ORDER.map((k) => `<button class="btn sm ${myTabs().includes(k) ? 'primary' : ''}" data-a="toggleTab" data-k="${k}">${TAB_DEFS[k].label}</button>`).join('')}</div><button class="link small" style="margin-top:10px" data-a="resetTabs">Reset to default</button></div>
       <div class="card"><h3>Ring goals</h3><div class="grid2"><div><label class="f">Daily study (min)</label><input type="number" value="${S.settings.readingGoalMin}" data-bind="settings.readingGoalMin" data-type="num"></div><div><label class="f">Default run (min)</label><input type="number" value="${S.settings.runDefaultMin}" data-bind="settings.runDefaultMin" data-type="num"></div></div><label class="f">Rest-day bonus activity that fills the ring (min)</label><input type="number" value="${S.settings.restDayActivityMin}" data-bind="settings.restDayActivityMin" data-type="num"><p class="tiny muted">Workout ring: gym days = ticked working sets ÷ planned sets; run days = minutes ÷ target; rest and optional days never count against you. Diet ring = planned meals eaten (portion-weighted). Reading ring = study minutes ÷ goal.</p></div>
       <div class="card"><h3>Reminders</h3><p class="small muted" style="margin-top:0"><b>Most reliable:</b> add The Key's schedule to your phone's calendar. Your calendar app then alerts you even when The Key is closed.</p><div class="stack"><button class="btn block" data-a="ics" data-w="all">Download calendar (.ics): bills, meals & training</button><div class="grid3"><button class="btn sm" data-a="ics" data-w="bills">Bills only</button><button class="btn sm" data-a="ics" data-w="meals">Meals only</button><button class="btn sm" data-a="ics" data-w="training">Training only</button></div></div>
         <hr class="sep"><div class="row between"><div class="grow"><div style="font-weight:600">In-app notifications</div><div class="tiny muted">Meal times & bills due tomorrow. Only fire while The Key is open or recently used (permission: ${perm}).</div></div><button class="btn sm" data-a="notif">${S.settings.notifications && perm === 'granted' ? 'On' : 'Enable'}</button></div><p class="tiny muted">iPhone: notifications need iOS 16.4+ and The Key added to your Home Screen. True background push needs a server — planned for a later version.</p></div>
@@ -937,7 +940,7 @@ Start by asking about whichever of my answers is weakest.`;
       <div class="card"><h3>Personal setup</h3><p class="small muted" style="margin-top:0">${S.settings.unlocked ? `Unlocked on ${T.fmtDate(S.settings.unlocked)}. Your edits since then live only on this device — keep backups.` : 'Your routine, meal plan, bills, lock-in and quotes are stored encrypted on the site. Unlock them with your passphrase.'}</p><button class="btn block" data-a="startUnlock">${S.settings.unlocked ? 'Re-load setup from encrypted file' : 'Unlock personal setup'}</button></div>
       ${(() => { const c = T.syncCfg(); return `<div class="card"><h3>🔒 Encrypted backup</h3>${c && c.enabled ? `<p class="small" style="margin-top:0">Backing up to <b>${h(c.owner)}/${h(c.repo)}</b> (private). ${c.last ? `Last backup ${new Date(c.last).toLocaleString('en-GB', { timeZone: 'Europe/London', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}.` : 'No backup yet.'}${c.lastErr ? `<br><span class="bad">Last attempt failed: ${h(c.lastErr)}</span>` : ''}</p><p class="tiny muted">Backs up automatically every 6 hours when something has changed, and keeps one dated copy per day.</p><div class="row" style="gap:8px"><button class="btn grow" data-a="backupNow">Back up now</button><button class="btn danger" data-a="backupOff">Turn off</button></div>` : `<p class="small muted" style="margin-top:0">Your logs currently live only on this phone. Turn on automatic encrypted backups to your private GitHub so you can restore everything on any device.</p><button class="btn primary block" data-a="backupSetup">Set up cloud backup</button>`}<div class="row" style="gap:8px;margin-top:10px"><button class="btn grow ghost" data-a="fileBackupSheet">Save encrypted file</button><button class="btn grow ghost" data-a="restoreSheet">Restore from cloud</button></div></div>`; })()}
       <div class="card"><h3>Your data</h3><p class="small muted" style="margin-top:0">Everything is stored privately on this device only — nothing is sent anywhere. Back up regularly, and use the backup file to move to a new phone.</p><div class="stack"><button class="btn block" data-a="exportData">Export backup (.json)</button><label class="btn block ghost" style="cursor:pointer">Import backup<input type="file" accept="application/json,.json" data-c="importData" style="display:none"></label><button class="btn danger block" data-a="wipe">Delete all data</button></div></div>
-      <p class="tiny muted" style="text-align:center">The Key · v2.0 · local-first · ${h(S.settings.tagline)}</p>`;
+      <p class="tiny muted" style="text-align:center">The Key · v2.1 · local-first · ${h(S.settings.tagline)}</p>`;
   }
 
   /* ---------- UNLOCK ---------- */
@@ -953,6 +956,31 @@ Start by asking about whichever of my answers is weakest.`;
       <button class="link" style="margin-top:6px" data-a="skipUnlock">${FIRST_RUN ? 'Start with a blank app instead' : 'Cancel'}</button></div>`;
   }
 
+  /* ---------- customisable tab bar ---------- */
+  const SVG = (inner, extra = '') => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" ${extra}>${inner}</svg>`;
+  const TAB_DEFS = {
+    home: { label: 'Today', href: '#/home', icon: SVG('<circle cx="8" cy="12" r="4.5"/><path d="M12.5 12H21M18 12v3M21 12v2.5"/>') },
+    calendar: { label: 'Rings', href: '#/calendar', icon: SVG('<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5.8"/><circle cx="12" cy="12" r="2.6"/>') },
+    discover: { label: 'Gazette', href: '#/discover', icon: SVG('<path d="M4 5h13v14H6a2 2 0 0 1-2-2V5z"/><path d="M17 8h3v9a2 2 0 0 1-2 2"/><path d="M7 8h7M7 11.5h7M7 15h4"/>') },
+    training: { label: 'Train', href: '#/training', icon: SVG('<path d="M6.5 6.5v11M17.5 6.5v11M3.5 9v6M20.5 9v6M6.5 12h11"/>') },
+    guitar: { label: 'Guitar', href: '#/guitar', icon: SVG('<path d="M19.5 3.5l1 1-5.2 5.2"/><path d="M14.3 9.7a3 3 0 0 0-4.1-.3l-.6.6a2.2 2.2 0 0 1-2.4.5 3.3 3.3 0 0 0-3.5.8 3.6 3.6 0 0 0 .2 5.3l2.9 2.9a3.6 3.6 0 0 0 5.3.2 3.3 3.3 0 0 0 .8-3.5 2.2 2.2 0 0 1 .5-2.4l.6-.6a3 3 0 0 0-.3-4.1"/><circle cx="9.5" cy="14.5" r="1.2"/>') },
+    academy: { label: 'Learn', href: '#/academy', icon: SVG('<path d="M3 8l9-4 9 4-9 4-9-4z"/><path d="M7 10v5c0 1.5 2.5 3 5 3s5-1.5 5-3v-5"/>') },
+    nutrition: { label: 'Food', href: '#/nutrition', icon: SVG('<path d="M7 3v8a2 2 0 0 0 2 2v8M5 3v5M9 3v5"/><path d="M17 3c-2 0-3 2.5-3 6s1 4 3 4v8"/>') },
+    finance: { label: 'Money', href: '#/finance', icon: SVG('<path d="M16 6.5a4 4 0 0 0-7 2.6V13M6.5 13h7M7 19h10M9 13c0 3-1 4.5-2 6"/>') },
+    progress: { label: 'Progress', href: '#/progress', icon: SVG('<path d="M4 19h16M6 16l4-5 3 3 5-7"/>') },
+    more: { label: 'More', href: '#/more', icon: SVG('<rect x="4" y="4" width="6.5" height="6.5" rx="1.8"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.8"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.8"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.8"/>') },
+  };
+  const TAB_ORDER = ['home', 'calendar', 'discover', 'training', 'guitar', 'academy', 'nutrition', 'finance', 'progress', 'more'];
+  const DEFAULT_TABS = ['home', 'calendar', 'discover', 'training', 'guitar', 'academy'];
+  const myTabs = () => { const t = (S.settings.tabs || DEFAULT_TABS).filter((k) => TAB_DEFS[k]); return t.length >= 3 ? t : DEFAULT_TABS; };
+  const PARENT = { session: 'training', template: 'training', course: 'academy', module: 'academy', conversation: 'academy', settings: 'more', lockin: 'more' };
+  function renderNav(routeName) {
+    const tabs = myTabs(), el = document.getElementById('navInner'); if (!el) return;
+    let active = tabs.includes(routeName) ? routeName : tabs.includes(PARENT[routeName]) ? PARENT[routeName] : null;
+    el.style.setProperty('--n', tabs.length);
+    el.innerHTML = tabs.map((k) => `<a href="${TAB_DEFS[k].href}" data-tab="${k}" class="${k === active ? 'on' : ''}" aria-label="${TAB_DEFS[k].label}">${TAB_DEFS[k].icon}<span class="lbl">${TAB_DEFS[k].label}</span></a>`).join('');
+  }
+
   /* ================= ROUTER ================= */
   function route() { const p = (location.hash || '#/home').slice(2).split('/'); return { name: p[0] || 'home', args: p.slice(1) }; }
   function render() {
@@ -966,7 +994,7 @@ Start by asking about whichever of my answers is weakest.`;
     $app.innerHTML = (map[r.name] || vHome)();
     render.last = location.hash;
     if (!same) { const saved = r.name === 'module' ? (S.study.scroll || {})[r.args.join(':')] : 0; window.scrollTo(0, 0); if (saved > 200) setTimeout(() => { window.scrollTo({ top: saved, behavior: 'smooth' }); toast('Picked up where you left off'); }, 60); } else window.scrollTo(0, y);
-    document.querySelectorAll('nav.tabs a').forEach((a) => a.classList.toggle('on', a.dataset.tab === (tabOf[r.name] || r.name)));
+    renderNav(r.name);
     document.body.classList.toggle('on-guitar', r.name === 'guitar'); if (r.name === 'guitar') gTimerLoop(); else clearInterval(gTick);
     renderSheet();
   }
@@ -1114,6 +1142,8 @@ Start by asking about whichever of my answers is weakest.`;
     snoozeNudge: () => { S.settings.nudgeSnooze = Date.now(); refresh(); },
     backupNow: async (el) => { el.disabled = true; el.textContent = 'Backing up…'; try { await T.backupNow(); toast('Encrypted backup saved'); } catch (e) { toast(e.message); } render(); },
     backupOff: async () => { if (!confirm('Turn off cloud backups on this phone? Existing backups on GitHub stay where they are.')) return; await T.disableBackup(); render(); toast('Cloud backup turned off'); },
+    toggleTab: (el) => { const k = el.dataset.k; let t = myTabs().slice(); if (t.includes(k)) { if (t.length <= 3) return toast('Keep at least 3 tabs'); t = t.filter((x) => x !== k); } else { if (t.length >= 6) return toast('Up to 6 tabs — remove one first'); t.push(k); } S.settings.tabs = TAB_ORDER.filter((x) => t.includes(x)); refresh(); },
+    resetTabs: () => { delete S.settings.tabs; refresh(); },
     togglePass: (el) => { const i = document.getElementById('pp'); if (i) i.type = i.type === 'password' ? 'text' : 'password'; },
     skipUnlock: () => { ui.unlock = false; S.settings.unlockSkipped = true; save(); render(); },
     startUnlock: () => { ui.unlock = true; render(); },
