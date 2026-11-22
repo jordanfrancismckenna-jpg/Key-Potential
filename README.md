@@ -10,6 +10,16 @@ A private, phone-first personal operating system, built as an installable web ap
 - **The McKenna Gazette:** a daily vintage newspaper of insights, Scripture and the Great Conversation
 - **Lock-in and Progress:** a commitments reference, weekly reviews and cycles
 
+## What's new in v2
+
+- **Today:** a "Now" card that always shows the single next thing to do (meal, session, study, guitar, or closing the day), plus an at-a-glance strip: rings, protein, guitar minutes and safe-to-spend per day.
+- **Safe to spend:** the lowest projected balance before your next payday, minus your low-balance buffer, shown as a total and per day.
+- **Close the day:** a one-minute evening flow covering meals, training, study, guitar, one line of reflection and tomorrow's preview. On Sundays it adds a weekly review with a focus for next week.
+- **Training focus mode:** one exercise at a time with large +/− steppers, an automatic rest timer when you tick a set, auto-advance, and "Use last".
+- **Ate as planned**, swipe between months and days, and reading mode in the Academy (text size, progress bar, resume where you left off).
+- **Encrypted backups:** automatic AES-256-GCM backups to a private GitHub repository you own (fine-grained token, contents only), restore on any device, and an encrypted file you can save to Files.
+- **Navigation:** Today · Rings · Train · Learn · More.
+
 ## Privacy model
 
 This repository is public, but **no personal data is readable in it**.
@@ -17,7 +27,7 @@ This repository is public, but **no personal data is readable in it**.
 - The owner's personal setup (routine, meal plan, bills, commitments, quotes and personal articles) is stored in `personal.enc.json`. It is encrypted with **AES-256-GCM**, using a key derived from a passphrase with **PBKDF2-SHA256 (600,000 iterations)**.
 - On first launch the app asks for the passphrase and decrypts the file **in the browser**, using the Web Crypto API. The passphrase is never sent anywhere.
 - Everything you log afterwards is stored **only on your device** (localStorage). Nothing is sent to a server, AI service or bank.
-- **Settings → Export backup** downloads your data as a `.json` file. Back up regularly, and use the backup to move to a new phone.
+- **Settings → Encrypted backup** saves an encrypted copy to a private GitHub repo automatically, or to Files on demand. The access token stays on the device and is never included in exports.
 - Anyone else who opens the site can choose "Start with a blank app" and use it with their own data.
 
 ## Install on a phone

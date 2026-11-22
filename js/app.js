@@ -31,7 +31,7 @@
   const top = (title, { back, eyebrow, right = '' } = {}) => `<div class="topbar"><div class="grow">${back ? `<button class="back" data-a="back" data-to="${h(back)}">‹ Back</button>` : ''}${eyebrow ? `<div class="eyebrow">${h(eyebrow)}</div>` : ''}<h1>${title}</h1></div>${right}</div>`;
 
   /* ---------------- rings SVG ---------------- */
-  function ringSVG(rg, size = 120, w = 11) {
+  function ringSVG(rg, size = 120, w = 11, anim = false) {
     const gap = w > 8 ? 2.5 : 1.5;
     const radii = [50 - w / 2, 50 - w * 1.5 - gap, 50 - w * 2.5 - gap * 2];
     let s = `<svg viewBox="0 0 100 100" width="${size}" height="${size}" aria-hidden="true">`;
@@ -39,7 +39,7 @@
       const r = radii[i], C = 2 * Math.PI * r, x = rg[k], col = `var(--${k})`;
       if (x.state === 'rest') s += `<circle cx="50" cy="50" r="${r}" fill="none" stroke="${col}" stroke-opacity=".45" stroke-width="${w * 0.5}" stroke-dasharray="${C / 24} ${C / 24}"/>`;
       else s += `<circle cx="50" cy="50" r="${r}" fill="none" stroke="${col}" stroke-opacity="${x.state === 'future' ? 0.06 : 0.18}" stroke-width="${w}"/>`;
-      if (x.pct > 0) s += `<circle cx="50" cy="50" r="${r}" fill="none" stroke="${col}" stroke-width="${w}" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - Math.max(x.pct, 0.02))}" transform="rotate(-90 50 50)"/>`;
+      if (x.pct > 0) s += `<circle class="${anim || size >= 100 ? 'arc' : ''}" style="--c:${C.toFixed(1)}" cx="50" cy="50" r="${r}" fill="none" stroke="${col}" stroke-width="${w}" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - Math.max(x.pct, 0.02))}" transform="rotate(-90 50 50)"/>`;
     });
     return s + '</svg>';
   }
@@ -74,66 +74,68 @@
   /* ================= VIEWS ================= */
 
   /* ---------- HOME ---------- */
-  function vHome() {
-    const d = T.today(), ci = T.cycleInfo(d), rg = T.rings(d), plan = T.planFor(d);
-    let out = top(`${greeting()}`, { eyebrow: 'The Key · ' + T.fmtDate(d, { weekday: 'long', day: 'numeric', month: 'long' }), right: `<a class="icon-btn" href="#/settings" aria-label="Settings">${icon.gear}</a>` });
-    if (ui.update) out += `<div class="card tight" style="border-color:var(--gold)" data-a="updateSheet"><div class="row between"><div><div class="eyebrow">Setup update available</div><div class="small">${h(ui.update.note || 'New data for your personal setup')}</div></div><span class="btn primary sm">Apply</span></div></div>`;
-    if (ci) {
-      const left = T.diffDays(d, ci.end);
-      out += `<div class="card tight" data-a="cycleSheet" data-id="${ci.id}" style="cursor:pointer"><div class="row between"><div><div class="eyebrow">${h(ci.name)} <span style="opacity:.6">· edit</span></div><div class="serif" style="font-size:20px">${ci.active ? `Day ${ci.day} of ${ci.total} · Week ${ci.week}` : d < ci.start ? `Starts ${T.fmtDate(ci.start)}` : 'Cycle complete'}</div></div><div class="small muted" style="text-align:right">${ci.active ? `${left} days left<br>ends ${T.fmtDate(ci.end, { day: 'numeric', month: 'short' })}` : ''}</div></div><div class="bar" style="margin-top:10px"><i style="width:${Math.round(ci.pct * 100)}%"></i></div></div>`;
+  /* ---------- TODAY ---------- */
+  // Everything that could be "the next thing to do", in priority order for this moment.
+  function todayTasks(d) {
+    const now = T.londonNow().time, hr = +now.slice(0, 2), plan = T.planFor(d), out = [];
+    const sess = T.sessionsOn(d), runs = T.runsOn(d), logs = T.mealLogs(d);
+    if (G().running) out.push({ k: 'guitar-run', icon: '🎸', title: 'Guitar practice in progress', sub: 'Tap Finish when you put the guitar down', act: `<a class="btn primary" href="#/guitar">Open timer</a>`, pri: 100 });
+    const open = sess.find((x) => x.exercises.some((e) => e.sets.some((st) => !st.done && !st.warmup)) && T.workSets(x).length);
+    if (open) out.push({ k: 'sess', icon: '🏋️', title: `Continue ${h(open.name)}`, sub: `${T.workSets(open).length} sets done`, act: `<button class="btn primary" data-a="goSession" data-id="${open.id}">Continue</button>`, pri: 95 });
+    if (hr >= 20 && !(S.closed || {})[d]) out.push({ k: 'close', icon: '🌙', title: 'Close your day', sub: 'One minute: meals, study, guitar, one line of reflection', act: `<button class="btn primary" data-a="closeDay" data-d="${d}">Start</button>`, pri: 90 });
+    for (const m of T.mealsPlanned(d)) {
+      if (logs.some((l) => l.planned && l.time === m.time)) continue;
+      const due = m.time <= now, soon = !due && T.diffDays(d, d) === 0 && (+m.time.slice(0, 2) * 60 + +m.time.slice(3)) - (hr * 60 + +now.slice(3)) <= 90;
+      out.push({ k: 'meal', icon: '🍽', title: h(m.meal?.name || 'Meal'), sub: `${m.time}${m.meal?.kcal ? ' · ' + Math.round(m.meal.kcal) + ' kcal · ' + Math.round(m.meal.p || 0) + 'g protein' : ''}${due ? ' · due' : ''}`, act: `<button class="btn primary" data-a="toggleMeal" data-d="${d}" data-mid="${m.mealId}" data-time="${m.time}">✓ Eaten</button>`, pri: due ? 80 : soon ? 70 : 30, time: m.time });
     }
-    out += `<div class="card" data-a="openDay" data-d="${d}" style="cursor:pointer"><div class="card-head"><h3>Today's rings</h3><span class="link">Details ›</span></div><div class="rings-hero">${ringSVG(rg, 132, 12)}<div class="ring-legend">${ringLegend(rg)}</div></div></div>`;
-
-    // training
-    const sess = T.sessionsOn(d), runs = T.runsOn(d);
-    let tr = '';
-    if (plan.type === 'gym') {
-      const t = T.tpl(plan.templateId);
-      const open = sess.find((s) => s.templateId === plan.templateId);
-      tr = `<div class="row between"><div><div class="serif" style="font-size:19px">${h(t?.name || 'Gym')} day</div><div class="small muted">${t ? `${t.exercises.length} exercises · ${T.plannedSetCount(t)} sets planned` : ''}${t && !t.exercises.length ? ' · routine not set yet' : ''}</div></div><button class="btn primary sm" data-a="${open ? 'goSession' : 'startSession'}" data-id="${open ? open.id : plan.templateId}">${open ? 'Continue' : 'Start'}</button></div>`;
-    } else if (plan.type === 'run') {
-      tr = `<div class="row between"><div><div class="serif" style="font-size:19px">${h(plan.label || 'Run')}</div><div class="small muted">${plan.target} min${plan.optional ? ' · optional — rest is fine' : ''}</div></div><button class="btn primary sm" data-a="runSheet" data-d="${d}">Log run</button></div>`;
-    } else tr = `<div class="row between"><div><div class="serif" style="font-size:19px">Rest & recover</div><div class="small muted">${h(plan.label || 'No training scheduled. Rest days never break your rings.')}</div></div><button class="btn sm" data-a="runSheet" data-d="${d}">Log activity</button></div>`;
-    if (sess.length || runs.length) tr += `<div class="small muted" style="margin-top:8px">Logged: ${sess.map((s) => h(s.name)).join(', ')}${sess.length && runs.length ? ' · ' : ''}${runs.map((r) => `${r.min} min ${h(r.type)}`).join(', ')}</div>`;
-    out += `<div class="card"><div class="card-head"><h3><span class="dot" style="background:var(--workout)"></span> Training</h3><a href="#/training">Open ›</a></div>${tr}</div>`;
-
-    // meals
-    const now = T.londonNow().time, logs = T.mealLogs(d), mp = T.mealsPlanned(d), nut = T.dayNutrition(d);
-    const nextIdx = mp.findIndex((m) => m.time >= now && !logs.some((l) => l.planned && l.time === m.time));
-    out += `<div class="card"><div class="card-head"><h3><span class="dot" style="background:var(--diet)"></span> ${S.nutrition.plans[T.dayType(d)].label}</h3><a href="#/nutrition">Plan ›</a></div><ul class="list">${mp.map((m, i) => {
-      const lg = logs.find((l) => l.planned && l.time === m.time);
-      const name = lg && lg.mealId !== m.mealId ? (T.meal(lg.mealId)?.name || lg.name) + ' (swap)' : m.meal?.name || 'Meal';
-      return `<li class="meal-row"><span class="meal-time">${m.time}</span><div class="grow"><div style="${i === nextIdx ? 'color:var(--gold2);font-weight:600' : ''}">${h(name)}</div><div class="tiny muted">${m.meal?.kcal ? Math.round(m.meal.kcal) + ' kcal' + (m.meal.p != null ? ' · ' + Math.round(m.meal.p) + 'g protein' : '') : 'kcal not set'}${i === nextIdx ? ' · up next' : ''}</div></div><button class="chk ${lg ? 'on' : ''}" data-a="toggleMeal" data-d="${d}" data-mid="${m.mealId}" data-time="${m.time}" aria-label="Mark eaten">${icon.check}</button></li>`;
-    }).join('')}</ul><div class="small muted" style="margin-top:6px">${nut.count ? `Logged ${nut.kcal.toLocaleString()} kcal${nut.unknown ? ` + ${nut.unknown} meal(s) without kcal data` : ''} · target ${S.nutrition.targets.kcal.toLocaleString()}` : `Target ${S.nutrition.targets.kcal.toLocaleString()} kcal · ${S.nutrition.targets.p} g protein`}</div></div>`;
-
-    // study
-    const min = T.studyMinutes(d), goal = S.settings.readingGoalMin;
-    const nextMod = nextModule();
-    out += `<div class="card"><div class="card-head"><h3><span class="dot" style="background:var(--reading)"></span> Study</h3><a href="#/academy">Academy ›</a></div><div class="row between"><div><div class="serif" style="font-size:19px">${min} / ${goal} min</div><div class="small muted">${nextMod ? `Next: ${h(nextMod.c.title)} · Wk ${nextMod.i + 1} — ${h(nextMod.w.t)}` : 'All modules complete'}</div></div><button class="btn sm" data-a="studySheet" data-d="${d}">+ Log</button></div>${nextMod ? `<a class="btn block" style="margin-top:12px" href="#/module/${nextMod.c.id}/${nextMod.i}">Continue course</a>` : ''}</div>`;
-
-    // money
-    out += homeMoney(d);
-
-    // lock-in strip
-    out += `<a class="card tight" href="#/guitar" style="display:block;text-decoration:none;color:inherit"><div class="row between"><div><div class="eyebrow">🎸 Guitar</div><div class="small">${gMinutes(d)} / ${G().goal} min today${G().running ? ' · <span class="good">timer running</span>' : ''}${gStreak() ? ` · 🔥 ${gStreak()} days` : ''}</div></div><span class="link">Practise ›</span></div></a>`;
-    out += `<a class="card tight" href="#/lockin" style="display:block;text-decoration:none;color:inherit"><div class="row between"><div class="eyebrow">Lock-in</div><span class="link">Reference ›</span></div><div class="row wrap" style="margin-top:8px;gap:6px">${((S.personal && S.personal.lockin) || []).filter((x) => !/gym|counsel/i.test(x.k)).map((x) => `<span class="pill">${h(x.k)} · ${h(x.d)}</span>`).join('') || '<span class="small muted">Unlock your personal setup to see your commitments.</span>'}</div></a>`;
+    if (plan.type === 'gym' && !sess.length) { const t = T.tpl(plan.templateId); out.push({ k: 'gym', icon: '🏋️', title: `${h(t?.name || 'Gym')} day`, sub: t ? `${t.exercises.length} exercises · ${T.plannedSetCount(t)} sets` : '', act: `<button class="btn primary" data-a="startSession" data-id="${plan.templateId}">Start</button>`, pri: hr >= 6 && hr < 21 ? 60 : 20 }); }
+    if (plan.type === 'run' && !runs.length) out.push({ k: 'run', icon: '🏃', title: h(plan.label || 'Run'), sub: `${plan.target} min${plan.optional ? ' · optional' : ''}`, act: `<button class="btn primary" data-a="runSheet" data-d="${d}">Log run</button>`, pri: plan.optional ? 15 : 55 });
+    const sm = T.studyMinutes(d), sg = S.settings.readingGoalMin, nm = nextModule();
+    if (sm < sg) out.push({ k: 'study', icon: '📖', title: `${sg - sm} min of study left`, sub: nm ? `${h(nm.c.title)} · Wk ${nm.i + 1}: ${h(nm.w.t)}` : 'Reading', act: nm ? `<a class="btn primary" href="#/module/${nm.c.id}/${nm.i}">Continue</a>` : `<button class="btn primary" data-a="studySheet" data-d="${d}">Log</button>`, pri: hr >= 17 ? 50 : 25 });
+    const gm = gMinutes(d);
+    if (gm < G().goal && !G().running) out.push({ k: 'guitar', icon: '🎸', title: `${G().goal - gm} min of guitar left`, sub: 'CAGED to a metronome', act: `<button class="btn primary" data-a="gStartGo">Start timer</button>`, pri: hr >= 18 ? 45 : 22 });
+    return out.sort((x, y) => y.pri - x.pri || (x.time || '').localeCompare(y.time || ''));
+  }
+  function vHome() {
+    const d = T.today(), ci = T.cycleInfo(d), rg = T.rings(d), tasks = todayTasks(d);
+    let out = `<div class="today-top"><div><div class="eyebrow">${T.fmtDate(d, { weekday: 'long', day: 'numeric', month: 'long' })}${ci && ci.active ? ` · Day ${ci.day}/${ci.total}` : ''}</div><h1>${greeting()}</h1></div><a class="icon-btn" href="#/settings" aria-label="Settings">${icon.gear}</a></div>`;
+    if (ui.update) out += `<div class="card tight upd" data-a="updateSheet"><div class="row between"><div><div class="eyebrow">Setup update available</div><div class="small">${h(ui.update.note || 'New data for your personal setup')}</div></div><span class="btn primary sm">Apply</span></div></div>`;
+    out += backupNudge();
+    // NOW card
+    const t0 = tasks[0];
+    if (t0) out += `<section class="now"><div class="now-label">Now</div><div class="row" style="align-items:flex-start;gap:14px"><div class="now-ico">${t0.icon}</div><div class="grow"><div class="now-title">${t0.title}</div><div class="now-sub">${t0.sub}</div></div></div><div class="now-act">${t0.act}</div>${tasks.length > 1 ? `<div class="now-next">${tasks.slice(1, 3).map((x) => `<div class="row between"><span>${x.icon} ${x.title}</span><span class="faint">${x.time || ''}</span></div>`).join('')}${tasks.length > 3 ? `<div class="faint tiny">+${tasks.length - 3} more today</div>` : ''}</div>` : ''}</section>`;
+    else out += `<section class="now done"><div class="now-label">Now</div><div class="now-title">${(S.closed || {})[d] ? 'Day closed. Well done.' : 'Everything for today is done.'}</div><div class="now-sub">${(S.closed || {})[d] ? 'Rest well — tomorrow is planned.' : 'Close your day to lock it in.'}</div>${(S.closed || {})[d] ? '' : `<div class="now-act"><button class="btn primary" data-a="closeDay" data-d="${d}">Close the day</button></div>`}</section>`;
+    // glance strip
+    const nut = T.dayNutrition(d), sts = T.safeToSpend(d);
+    out += `<div class="glance"><button class="g-rings" data-a="openDay" data-d="${d}" aria-label="Today's rings">${ringSVG(rg, 74, 11, true)}</button>
+      <a class="g-tile" href="#/nutrition"><span class="g-v">${nut.p}<small>/${S.nutrition.targets.p}g</small></span><span class="g-l">Protein</span></a>
+      <a class="g-tile" href="#/guitar"><span class="g-v">${gMinutes(d)}<small>/${G().goal}</small></span><span class="g-l">Guitar</span></a>
+      <a class="g-tile" href="#/finance">${sts ? `<span class="g-v ${sts.safe < 0 ? 'bad' : ''}">${sts.safe < 0 ? '−' : ''}£${Math.abs(Math.round(sts.perDay))}</span><span class="g-l">Safe / day</span>` : `<span class="g-v">£—</span><span class="g-l">Set balance</span>`}</a></div>`;
+    // Today's plan
+    const plan = T.planFor(d), logs = T.mealLogs(d), mp = T.mealsPlanned(d), allEaten = mp.length && mp.every((m) => logs.some((l) => l.planned && l.time === m.time));
+    out += `<section class="block"><div class="block-h"><h3>Today</h3><a href="#/calendar" class="link small">Rings ›</a></div><ul class="plain">`;
+    out += `<li class="prow"><span class="pdot" style="background:var(--workout)"></span><div class="grow"><b>${plan.type === 'gym' ? h(T.tpl(plan.templateId)?.name || 'Gym') : plan.type === 'run' ? h(plan.label || 'Run') : 'Rest day'}</b><div class="tiny muted">${h(rg.workout.detail || '')}</div></div><a class="link small" href="#/training">Train ›</a></li>`;
+    for (const m of mp) { const lg = logs.find((l) => l.planned && l.time === m.time); out += `<li class="prow"><span class="ptime">${m.time}</span><div class="grow ${lg ? 'struck' : ''}">${h(lg && lg.mealId !== m.mealId ? (T.meal(lg.mealId)?.name || '') : m.meal?.name || 'Meal')}</div><button class="chk sm ${lg ? 'on' : ''}" data-a="toggleMeal" data-d="${d}" data-mid="${m.mealId}" data-time="${m.time}" aria-label="Eaten">${icon.check}</button></li>`; }
+    if (mp.length && !allEaten) out += `<li class="prow"><span class="pdot" style="background:var(--diet)"></span><div class="grow small muted">${nut.kcal.toLocaleString()} / ${S.nutrition.targets.kcal.toLocaleString()} kcal</div><button class="btn sm" data-a="ateAsPlanned" data-d="${d}">Ate as planned</button></li>`;
+    out += `<li class="prow"><span class="pdot" style="background:var(--reading)"></span><div class="grow"><b>${T.studyMinutes(d)} / ${S.settings.readingGoalMin} min study</b></div><button class="btn sm" data-a="studySheet" data-d="${d}">+ Log</button></li></ul></section>`;
+    // Gazette teaser
+    try { const E = edition(d), lead = gzById(E.lead), q = quoteOfDay(d); out += `<a class="gz-teaser" href="#/discover"><div class="gz-teaser-mast">The McKenna Gazette</div>${q ? `<div class="gz-teaser-q">“${h(q.text.length > 120 ? q.text.slice(0, 118) + '…' : q.text)}”</div>` : ''}${lead ? `<div class="gz-teaser-h">${h(lead.head)}</div>` : ''}<div class="gz-teaser-cta">Read today's edition ›</div></a>`; } catch (e) {}
+    // Money
+    out += homeMoney(d, sts);
+    // cycle + lock-in
+    if (ci) out += `<section class="block" data-a="cycleSheet" data-id="${ci.id}" style="cursor:pointer"><div class="block-h"><h3>${h(ci.name)}</h3><span class="small muted">${ci.active ? `${T.diffDays(d, ci.end)} days left` : ''}</span></div><div class="bar"><i style="width:${Math.round(ci.pct * 100)}%"></i></div></section>`;
+    out += `<a class="block" href="#/lockin" style="display:block;text-decoration:none;color:inherit"><div class="block-h"><h3>Lock-in</h3><span class="link small">Reference ›</span></div><div class="row wrap" style="gap:6px">${((S.personal && S.personal.lockin) || []).filter((x) => !/gym|counsel/i.test(x.k)).map((x) => `<span class="pill">${h(x.k)} · ${h(x.d)}</span>`).join('') || '<span class="small muted">Unlock your personal setup to see your commitments.</span>'}</div></a>`;
+    if (!(S.closed || {})[d] && T.londonNow().time >= '18:00' && t0 && t0.k !== 'close') out += `<button class="btn block ghost" style="margin-top:4px" data-a="closeDay" data-d="${d}">🌙 Close the day</button>`;
+    setTimeout(() => maybeCelebrate(d), 400);
     return out;
   }
-  function homeMoney(d) {
-    const p = T.projectedBalance(d);
-    const up = T.occurrences(d, T.addDays(d, 7));
-    const und = T.undated();
-    let body = '';
-    if (p) body += `<div class="row between"><div><div class="small muted">Projected balance today</div><div class="serif" style="font-size:24px">${T.gbp(p.balance)}</div></div><div class="tiny muted" style="text-align:right">from your bank figure<br>on ${T.fmtDate(p.anchor.date)}</div></div>`;
-    else body += `<div class="notice">Add your current bank balance to unlock date-by-date projections. <a href="#/finance" data-a="finTab" data-t="setup">Set up ›</a></div>`;
-    if (p) {
-      const series = T.forecastSeries(d, 30).filter((x) => x.bal != null);
-      const low = series.reduce((m, x) => (x.bal < m.bal ? x : m), series[0]);
-      if (low && low.bal < S.settings.lowBalance) body += `<div class="notice" style="margin-top:10px">⚠️ Projected to dip to ${T.gbp(low.bal)} on ${T.fmtDate(low.date)} (below your ${T.gbp(S.settings.lowBalance)} alert).</div>`;
-    }
-    if (up.length) body += `<ul class="list" style="margin-top:8px">${up.slice(0, 5).map((o) => `<li class="row between"><div><div>${h(o.name)}</div><div class="tiny muted">${T.fmtDate(o.date)} · ${o.status}</div></div><div class="${o.amount > 0 ? 'good' : ''}" style="font-variant-numeric:tabular-nums">${o.amount > 0 ? '+' : ''}${T.gbp(o.amount)}</div></li>`).join('')}</ul>`;
-    else if (und.length) body += `<div class="small muted" style="margin-top:8px">${und.length} bill(s) still need a payment date before they appear here.</div>`;
-    return `<div class="card"><div class="card-head"><h3>💷 Money</h3><a href="#/finance">Finance ›</a></div>${body}</div>`;
+  function homeMoney(d, sts) {
+    const up = T.occurrences(T.addDays(d, 0), T.addDays(d, 7)).filter((o) => o.status !== 'paid');
+    let body;
+    if (!sts) body = `<div class="small muted">Record today's bank balance (Finance → Balance) to see what's safe to spend until payday.</div>`;
+    else body = `<div class="row between"><div><div class="serif ${sts.safe < 0 ? 'bad' : ''}" style="font-size:26px">${T.gbp(sts.safe)}</div><div class="tiny muted">safe to spend until payday ${T.fmtDate(sts.payday, { weekday: 'short', day: 'numeric', month: 'short' })} · ${T.gbp(sts.perDay)}/day for ${sts.days} days</div></div></div>${sts.safe < 0 ? `<div class="notice" style="margin-top:8px">Your balance is projected to fall below your ${T.gbp(sts.buffer)} buffer before payday (lowest ${T.gbp(sts.lowest)} on ${T.fmtDate(sts.lowestDate)}).</div>` : ''}`;
+    if (up.length) body += `<ul class="plain" style="margin-top:8px">${up.slice(0, 4).map((o) => `<li class="prow"><span class="ptime">${T.fmtDate(o.date, { day: 'numeric', month: 'short' })}</span><div class="grow small">${h(o.name)}</div><span class="small ${o.amount > 0 ? 'good' : ''}" style="font-variant-numeric:tabular-nums">${o.amount > 0 ? '+' : ''}${T.gbp(o.amount)}</span></li>`).join('')}</ul>`;
+    return `<a class="block" href="#/finance" style="display:block;text-decoration:none;color:inherit"><div class="block-h"><h3>Money</h3><span class="link small">Finance ›</span></div>${body}</a>`;
   }
   function nextModule() {
     let best = null;
@@ -154,7 +156,7 @@
     out += `<div class="row between" style="margin-bottom:12px"><button class="icon-btn" data-a="calMove" data-n="-1" aria-label="Previous">‹</button><div class="serif" style="font-size:20px">${label}</div><button class="icon-btn" data-a="calMove" data-n="1" aria-label="Next">›</button></div>`;
     out += `<div class="seg" style="margin-bottom:12px"><button class="${ui.calView === 'month' ? 'on' : ''}" data-a="calView" data-v="month">Month</button><button class="${ui.calView === 'week' ? 'on' : ''}" data-a="calView" data-v="week">Week</button><button data-a="calToday">Today</button></div>`;
     if (ui.calView === 'month') {
-      out += `<div class="card" style="padding:10px"><div class="cal-head">${['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((x) => `<div>${x}</div>`).join('')}</div><div class="cal">`;
+      out += `<div class="card" style="padding:10px" data-swipe="calMove"><div class="cal-head">${['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((x) => `<div>${x}</div>`).join('')}</div><div class="cal">`;
       const start = T.startOfWeek(first), end = T.addDays(T.startOfWeek(last), 6);
       for (const d of T.range(start, end)) {
         const out_ = d.slice(0, 7) !== ui.calMonth;
@@ -164,7 +166,7 @@
       out += `</div></div>`;
     } else {
       const ws = T.startOfWeek(ui.weekStart || td);
-      out += `<div class="row between" style="margin-bottom:8px"><button class="btn sm" data-a="weekMove" data-n="-7">‹ Prev</button><div class="small muted">Week of ${T.fmtDate(ws, { day: 'numeric', month: 'short' })}</div><button class="btn sm" data-a="weekMove" data-n="7">Next ›</button></div><div class="card">`;
+      out += `<div class="row between" style="margin-bottom:8px"><button class="btn sm" data-a="weekMove" data-n="-7">‹ Prev</button><div class="small muted">Week of ${T.fmtDate(ws, { day: 'numeric', month: 'short' })}</div><button class="btn sm" data-a="weekMove" data-n="7">Next ›</button></div><div class="card" data-swipe="swipeWeek">`;
       for (const d of T.range(ws, T.addDays(ws, 6))) {
         const rg = T.rings(d);
         out += `<div class="weekrow" data-a="openDay" data-d="${d}">${ringSVG(rg, 54, 10)}<div class="grow"><div style="font-weight:600${d === td ? ';color:var(--gold2)' : ''}">${T.fmtDate(d, { weekday: 'long', day: 'numeric', month: 'short' })}</div><div class="tiny muted">${['workout', 'diet', 'reading'].map((k) => `<span style="color:var(--${k})">●</span> ${rg[k].state === 'rest' ? 'rest' : rg[k].state === 'future' ? '—' : pct(rg[k].pct)}`).join(' &nbsp; ')}</div></div><span class="faint">›</span></div>`;
@@ -182,7 +184,7 @@
     const rg = T.rings(d), plan = T.planFor(d), st = S.dayStatus[d];
     const sess = T.sessionsOn(d), runs = T.runsOn(d), logs = T.mealLogs(d), study = S.study.log.filter((x) => x.date === d);
     const occ = T.occurrences(d, d);
-    let s = `<div class="row between"><div><div class="eyebrow">${d === T.today() ? 'Today' : T.fmtDate(d, { weekday: 'long' })}</div><h2>${T.fmtDate(d, { day: 'numeric', month: 'long', year: 'numeric' })}</h2></div><button class="icon-btn" data-a="closeSheet">${icon.x}</button></div>`;
+    let s = `<div data-swipe="daySwipe" data-d="${d}"><div class="row between"><button class="icon-btn" data-a="daySwipe" data-d="${d}" data-n="-1" aria-label="Previous day">‹</button><div style="text-align:center"><div class="eyebrow">${d === T.today() ? 'Today' : T.fmtDate(d, { weekday: 'long' })}</div><h2>${T.fmtDate(d, { day: 'numeric', month: 'long', year: 'numeric' })}</h2></div><div class="row" style="gap:6px">${d < T.today() ? `<button class="icon-btn" data-a="daySwipe" data-d="${d}" data-n="1" aria-label="Next day">›</button>` : '<span style="width:36px"></span>'}<button class="icon-btn" data-a="closeSheet">${icon.x}</button></div></div>`;
     s += `<div class="rings-hero" style="margin:14px 0">${ringSVG(rg, 110, 12)}<div class="ring-legend">${ringLegend(rg)}</div></div>`;
     s += `<div class="small muted">Plan: ${plan.type === 'gym' ? h(T.tpl(plan.templateId)?.name || 'Gym') + ' session' : plan.type === 'run' ? h(plan.label || 'Run') + ` (${plan.target} min)` : h(plan.label || 'Rest')}</div>`;
     s += `<div class="seg" style="margin:10px 0 4px"><button class="${!st ? 'on' : ''}" data-a="dayStatus" data-d="${d}" data-v="">As planned</button><button class="${st === 'rest' ? 'on' : ''}" data-a="dayStatus" data-d="${d}" data-v="rest">Rest day</button><button class="${st === 'ill' ? 'on' : ''}" data-a="dayStatus" data-d="${d}" data-v="ill">Unwell</button></div>`;
@@ -201,6 +203,7 @@
     s += `<hr class="sep"><div class="row between"><h3 style="color:var(--reading)">Reading & study</h3><button class="btn sm" data-a="studySheet" data-d="${d}">+ Study</button></div>`;
     s += study.length ? `<ul class="list">${study.map((x) => `<li class="row between"><div class="grow"><div>${h(T.course(x.course)?.title || 'General reading')} · ${x.min} min</div><div class="tiny muted">${h(x.kind || 'reading')}${x.pages ? ` · ${x.pages} pages` : ''}${x.note ? ' · ' + h(x.note) : ''}</div></div><button class="icon-btn" data-a="delStudy" data-id="${x.id}">${icon.x}</button></li>`).join('')}</ul>` : '<div class="empty small">Nothing logged.</div>';
     if (occ.length) s += `<hr class="sep"><h3>💷 Money on this day</h3><ul class="list">${occ.map((o) => `<li class="row between"><span>${h(o.name)} <span class="tiny muted">${o.status}</span></span><span>${T.gbp(o.amount)}</span></li>`).join('')}</ul>`;
+    s += '</div>';
     return s;
   }
   const paceStr = (min, km) => { const p = min / km; const mm = Math.floor(p), ss = Math.round((p - mm) * 60); return `${mm}:${String(ss).padStart(2, '0')}`; };
@@ -284,7 +287,11 @@
     const s = S.sessions.find((x) => x.id === id); if (!s) return top('Session not found', { back: '#/training' });
     const si = S.sessions.indexOf(s);
     let out = top(h(s.name), { back: '#/training', eyebrow: T.fmtDate(s.date, { weekday: 'long', day: 'numeric', month: 'short' }) });
-    out += `<div class="card tight"><div class="grid2"><div><label class="f" style="margin-top:0">Date</label><input type="date" value="${s.date}" data-bind="sessions.${si}.date" data-rerender></div><div><label class="f" style="margin-top:0">Duration (min)</label><input type="number" value="${s.min ?? ''}" data-bind="sessions.${si}.min" data-type="num"></div></div><div class="row" style="margin-top:10px;gap:6px">${[60, 90, 120, 180].map((x) => `<button class="btn sm" data-a="timer" data-s="${x}">⏱ ${x < 120 ? x + 's' : x / 60 + 'm'}</button>`).join('')}</div></div>`;
+    const view = S.settings.sessionView || 'focus', rest = S.settings.restSec ?? 90;
+    out += `<div class="seg" style="margin-bottom:10px"><button class="${view === 'focus' ? 'on' : ''}" data-a="sessView" data-v="focus">Focus</button><button class="${view === 'list' ? 'on' : ''}" data-a="sessView" data-v="list">All exercises</button></div>`;
+    out += `<div class="row wrap" style="gap:6px;margin-bottom:10px"><span class="small muted">Auto rest:</span>${[0, 60, 90, 120, 180].map((x) => `<button class="btn sm ${rest === x ? 'primary' : ''}" data-a="restSet" data-v="${x}">${x ? (x < 120 ? x + 's' : x / 60 + 'm') : 'Off'}</button>`).join('')}</div>`;
+    if (view === 'focus') return out + sessionFocus(s, si);
+    out += `<div class="card tight"><div class="grid2"><div><label class="f" style="margin-top:0">Date</label><input type="date" value="${s.date}" data-bind="sessions.${si}.date" data-rerender></div><div><label class="f" style="margin-top:0">Duration (min)</label><input type="number" value="${s.min ?? ''}" data-bind="sessions.${si}.min" data-type="num"></div></div></div>`;
     s.exercises.forEach((e, ei) => {
       const hist = T.exerciseHistory(e.name).filter((x) => x.date < s.date || x.date === s.date && false);
       const prev = hist[hist.length - 1];
@@ -300,6 +307,32 @@
     out += `<div class="card"><label class="f" style="margin-top:0">Session notes</label><textarea data-bind="sessions.${si}.notes" placeholder="Energy, sleep, technique…">${h(s.notes || '')}</textarea></div>`;
     out += `<div class="row"><button class="btn danger" data-a="delSession" data-s="${id}">Delete</button><a class="btn primary grow" href="#/training">Done</a></div><p class="tiny muted">Only sets ticked ✓ count toward your Workout ring and history. Tap a set number to mark it as a warm-up.</p>`;
     return out;
+  }
+  function lastSets(e, s) { const hist = T.exerciseHistory(e.name).filter((x) => x.date < s.date); return hist.length ? hist[hist.length - 1] : null; }
+  function focusIndex(s) {
+    if (ui.focus && ui.focus.id === s.id && s.exercises[ui.focus.i]) return ui.focus.i;
+    const i = s.exercises.findIndex((e) => e.sets.some((x) => !x.done));
+    return i < 0 ? Math.max(0, s.exercises.length - 1) : i;
+  }
+  function sessionFocus(s, si) {
+    if (!s.exercises.length) return `<div class="card empty">No exercises yet. Switch to <b>All exercises</b> to add some.</div>`;
+    const i = focusIndex(s), e = s.exercises[i], prev = lastSets(e, s), id = s.id;
+    const tplEx = (T.tpl(s.templateId)?.exercises || []).find((x) => x.name === e.name) || e;
+    const sug = T.suggestNext({ ...tplEx, name: e.name }), inc = tplEx.inc || 2.5;
+    const doneEx = (x) => x.sets.length && x.sets.every((q) => q.done);
+    let o = `<div class="fx-dots">${s.exercises.map((x, k) => `<button class="fx-dot ${k === i ? 'cur' : ''} ${doneEx(x) ? 'done' : ''}" data-a="focusGo" data-s="${id}" data-i="${k}" aria-label="${h(x.name)}"></button>`).join('')}</div>`;
+    o += `<div class="fx"><div class="tiny muted">Exercise ${i + 1} of ${s.exercises.length}</div><h2 class="fx-name">${h(e.name)}</h2>${e.note ? `<div class="small muted">${h(e.note)}</div>` : ''}
+      ${prev ? `<div class="row between" style="margin-top:8px"><span class="small muted">Last time: ${prev.sets.map((x) => `${x.w}×${x.r}`).join(', ')}</span><button class="link small" data-a="useLast" data-s="${id}" data-e="${i}">Use last</button></div>` : ''}
+      <div class="fx-sets">${e.sets.map((x, xi) => `<div class="fx-set ${x.done ? 'is-done' : ''} ${x.warmup ? 'is-wu' : ''}"><button class="fx-no" data-a="setWarm" data-s="${id}" data-e="${i}" data-x="${xi}" title="Tap to toggle warm-up">${x.warmup ? 'W' : xi + 1 - e.sets.slice(0, xi).filter((q) => q.warmup).length}</button>
+        <div class="stp"><button data-a="stepVal" data-s="${id}" data-e="${i}" data-x="${xi}" data-k="w" data-d="${-inc}">−</button><div class="stp-v">${x.w ?? 0}<small>kg</small></div><button data-a="stepVal" data-s="${id}" data-e="${i}" data-x="${xi}" data-k="w" data-d="${inc}">+</button></div>
+        <div class="stp"><button data-a="stepVal" data-s="${id}" data-e="${i}" data-x="${xi}" data-k="r" data-d="-1">−</button><div class="stp-v">${x.r ?? 0}<small>${e.unit === 'min' ? 'min' : e.unit === 'sec' ? 's' : 'reps'}</small></div><button data-a="stepVal" data-s="${id}" data-e="${i}" data-x="${xi}" data-k="r" data-d="1">+</button></div>
+        <button class="chk fx-chk ${x.done ? 'on' : ''}" data-a="setDone" data-s="${id}" data-e="${i}" data-x="${xi}">${icon.check}</button></div>`).join('')}</div>
+      <div class="row" style="gap:8px;margin-top:10px"><button class="btn sm" data-a="setAdd" data-s="${id}" data-e="${i}">+ Set</button>${e.sets.length ? `<button class="btn sm ghost" data-a="setDel" data-s="${id}" data-e="${i}">− Last set</button>` : ''}<span class="grow"></span><select class="rpe" data-c="rpeAll" data-s="${id}" data-e="${i}"><option value="">RPE</option>${[6, 7, 8, 9, 10].map((r) => `<option ${e.sets.some((q) => +q.rpe === r) ? 'selected' : ''}>${r}</option>`).join('')}</select></div>
+      <div class="suggest ${sug.kind === 'up' ? '' : sug.kind}" style="margin-top:12px">💡 ${h(sug.text)}</div></div>`;
+    const nx = s.exercises[i + 1];
+    o += `<div class="row" style="gap:8px;margin-top:12px">${i > 0 ? `<button class="btn grow" data-a="focusGo" data-s="${id}" data-i="${i - 1}">‹ Back</button>` : ''}${nx ? `<button class="btn primary grow" data-a="focusGo" data-s="${id}" data-i="${i + 1}">Next: ${h(nx.name)} ›</button>` : `<a class="btn primary grow" href="#/training">Finish session</a>`}</div>`;
+    o += `<p class="tiny muted" style="margin-top:10px">Tick ✓ when a set is done: the rest timer starts automatically, and when every set is ticked you move to the next exercise. Tap a set number to mark a warm-up.</p>`;
+    return o;
   }
   function tHistory() {
     const names = [...new Set(S.sessions.flatMap((s) => s.exercises.map((e) => e.name)))].sort();
@@ -340,7 +373,7 @@
   const handoffNote = () => !S.nutrition.meals.some((m) => m.kcal == null || m.src === 'handoff') ? '' : `<div class="notice">Figures marked from the handoff are the previous assistant's summary, not your workbook. Send me <b>Final Diet Dashboard 2027.xlsx</b> and I'll load exact recipes, weights and macros — or edit them under Meals.</div>`;
   function nDay() {
     const d = ui.nutDate || T.today(), dt = T.dayType(d), logs = T.mealLogs(d), n = T.dayNutrition(d), tg = S.nutrition.targets;
-    let out = `<div class="row between" style="margin-bottom:10px"><button class="icon-btn" data-a="nutDay" data-n="-1">‹</button><div style="text-align:center"><div class="serif" style="font-size:19px">${T.fmtDate(d, { weekday: 'long', day: 'numeric', month: 'short' })}</div>${d === T.today() ? '<div class="tiny gold">Today</div>' : ''}</div><button class="icon-btn" data-a="nutDay" data-n="1">›</button></div>`;
+    let out = `<div class="row between" style="margin-bottom:10px" data-swipe="nutDay"><button class="icon-btn" data-a="nutDay" data-n="-1">‹</button><div style="text-align:center"><div class="serif" style="font-size:19px">${T.fmtDate(d, { weekday: 'long', day: 'numeric', month: 'short' })}</div>${d === T.today() ? '<div class="tiny gold">Today</div>' : ''}</div><button class="icon-btn" data-a="nutDay" data-n="1">›</button></div>`;
     out += `<div class="seg" style="margin-bottom:12px"><button class="${dt === 'home' ? 'on' : ''}" data-a="dayType" data-d="${d}" data-v="home">Home day</button><button class="${dt === 'office' ? 'on' : ''}" data-a="dayType" data-d="${d}" data-v="office">Office day</button></div>`;
     out += `<div class="card"><div class="card-head"><h3>Planned meals</h3><span class="tiny muted">${(() => { const ms = T.mealsPlanned(d).map((x) => x.meal); if (!ms.length || ms.some((x) => !x || x.kcal == null)) return 'Plan total: add kcal to every meal'; const t = (k) => Math.round(ms.reduce((a, x) => a + (x[k] || 0), 0)); return `Plan: ${t('kcal').toLocaleString()} kcal · ${t('p')}P · ${t('c')}C · ${t('f')}F`; })()}</span></div><ul class="list">`;
     for (const m of T.mealsPlanned(d)) {
@@ -348,7 +381,7 @@
       out += `<li><div class="meal-row"><span class="meal-time">${m.time}</span><div class="grow"><div>${h(lg ? T.meal(lg.mealId)?.name : m.meal?.name)}</div><div class="tiny muted">${(() => { const x = lg ? T.meal(lg.mealId) : m.meal; return x && x.kcal != null ? `${Math.round(x.kcal)} kcal · ${Math.round(x.p || 0)}g protein` : 'kcal not set'; })()}</div></div><button class="chk ${lg ? 'on' : ''}" data-a="toggleMeal" data-d="${d}" data-mid="${m.mealId}" data-time="${m.time}">${icon.check}</button></div>${lg ? `<div class="grid2" style="margin-top:8px"><select data-c="portion" data-d="${d}" data-id="${lg.id}">${[0.5, 0.75, 1, 1.25, 1.5].map((p) => `<option value="${p}" ${p === lg.portion ? 'selected' : ''}>Portion ×${p}</option>`).join('')}</select><select data-c="swap" data-d="${d}" data-id="${lg.id}">${S.nutrition.meals.map((x) => `<option value="${x.id}" ${x.id === lg.mealId ? 'selected' : ''}>${x.id === m.mealId ? 'As planned' : 'Swap: ' + h(x.name)}</option>`).join('')}</select></div>` : ''}</li>`;
     }
     for (const l of logs.filter((x) => !x.planned)) out += `<li class="meal-row"><span class="meal-time">${h(l.time || '')}</span><div class="grow">${h(l.name)}<div class="tiny muted">${l.kcal ?? '?'} kcal${l.portion !== 1 ? ' ×' + l.portion : ''}</div></div><button class="icon-btn" data-a="delFood" data-d="${d}" data-id="${l.id}">${icon.x}</button></li>`;
-    out += `</ul><button class="btn block" style="margin-top:10px" data-a="foodSheet" data-d="${d}">+ Add other food</button></div>`;
+    out += `</ul><div class="row" style="gap:8px;margin-top:10px">${T.mealsPlanned(d).some((m) => !logs.some((l) => l.planned && l.time === m.time)) ? `<button class="btn grow" data-a="ateAsPlanned" data-d="${d}">✓ Ate as planned</button>` : ''}<button class="btn grow" data-a="foodSheet" data-d="${d}">+ Other food</button></div></div>`;
     const bar = (v, t, col) => `<div class="bar"><i style="width:${t ? Math.min(100, (v / t) * 100) : 0}%;background:${col}"></i></div>`;
     out += `<div class="card"><h3>Consumed vs target</h3>${n.unknown ? `<p class="small warn">${n.unknown} logged meal(s) have no nutrition data yet, so totals are incomplete.</p>` : ''}
       <div class="stack" style="margin-top:8px">${[['Calories', n.kcal, tg.kcal, 'kcal', 'var(--gold)'], ['Protein', n.p, tg.p, 'g', 'var(--workout)'], ['Carbs', n.c, tg.c, 'g', 'var(--diet)'], ['Fat', n.f, tg.f, 'g', 'var(--reading)']].map(([l, v, t, u, c]) => `<div><div class="row between small"><span>${l}</span><span class="muted">${v.toLocaleString()} / ${t.toLocaleString()} ${u}</span></div>${bar(v, t, c)}</div>`).join('')}</div>
@@ -579,7 +612,7 @@
     if (!ok) {
       return out + `<div class="card locked"><div class="faint">${icon.lock}</div><h3 style="margin:8px 0">Spoiler guard</h3><p class="small muted">This lecture discusses events from ${h(w.r)}. Mark last week's reading as done to unlock it, or reveal it anyway.</p><button class="btn" data-a="modFlag" data-k="${k}" data-f="revealed">Reveal anyway</button></div>`;
     }
-    out += `<div class="card"><div class="eyebrow">Lecture</div><div class="lecture" style="margin-top:10px">${w.l.split('\n\n').map((p) => `<p>${h(p)}</p>`).join('')}</div>${i > 0 && c.weeks[0].l.length > w.l.length * 2 ? '<p class="tiny faint">Phase-1 lecture: concise. Full-length lectures are authored progressively, once your edition is confirmed.</p>' : ''}<div class="row wrap" style="gap:6px">${(w.themes || []).map((t) => `<a class="pill gold" href="#/conversation" data-a="setTheme" data-t="${t}" style="text-decoration:none">✦ ${t}</a>`).join('')}</div></div>`;
+    out += `<div class="readbar"><i id="readBarFill"></i></div><div class="card"><div class="row between"><div class="eyebrow">Lecture</div><div class="row" style="gap:6px"><button class="btn sm" data-a="readSize" data-n="-1" aria-label="Smaller text">A−</button><button class="btn sm" data-a="readSize" data-n="1" aria-label="Larger text">A+</button></div></div><div class="lecture" style="margin-top:10px;font-size:${S.settings.readSize || 18}px">${w.l.split('\n\n').map((p) => `<p>${h(p)}</p>`).join('')}</div>${i > 0 && c.weeks[0].l.length > w.l.length * 2 ? '<p class="tiny faint">Phase-1 lecture: concise. Full-length lectures are authored progressively, once your edition is confirmed.</p>' : ''}<div class="row wrap" style="gap:6px">${(w.themes || []).map((t) => `<a class="pill gold" href="#/conversation" data-a="setTheme" data-t="${t}" style="text-decoration:none">✦ ${t}</a>`).join('')}</div></div>`;
     // videos
     const mine = S.study.videos[k] || [];
     out += `<div class="card"><div class="eyebrow">Watch</div><div style="margin-top:10px">${[...w.v, ...mine.map((m) => ({ ...m, mine: true }))].map((v, vi) => `<div class="video"><div class="row between" style="align-items:flex-start"><div class="grow"><div style="font-weight:600">${h(v.title)}</div><div class="tiny muted">${v.channel ? h(v.channel) + ' · ' : ''}${v.verified ? '<span class="good">✓ link checked</span>' : v.mine ? 'added by you' : '<span class="warn">search — not a vetted pick</span>'}</div></div>${v.mine ? `<button class="icon-btn" data-a="delVideo" data-k="${k}" data-i="${vi - w.v.length}">${icon.x}</button>` : ''}</div>${v.why ? `<div class="small" style="margin-top:6px">${h(v.why)}</div>` : ''}${v.ask ? `<div class="small gold" style="margin-top:4px">Viewing question: ${h(v.ask)}</div>` : ''}<a class="btn sm" style="margin-top:8px" href="${h(v.url)}" target="_blank" rel="noopener">Open ↗</a></div>`).join('')}</div>
@@ -803,9 +836,94 @@ Start by asking about whichever of my answers is weakest.`;
   function gTimerLoop() { clearInterval(gTick); gTick = setInterval(() => { const el = document.getElementById('gTimer'); if (!el) return; el.textContent = mmss(gElapsed()); }, 1000); }
   function gLog(min, date) { if (min <= 0) return; G().log.push({ id: T.uid(), date: date || T.today(), min }); }
 
+  /* ---------- celebration, close the day, weekly review ---------- */
+  function maybeCelebrate(d) {
+    const rg = T.rings(d), ks = ['workout', 'diet', 'reading'];
+    const closed = ks.every((k) => rg[k].state === 'rest' || rg[k].pct >= 1) && ks.some((k) => rg[k].pct >= 1);
+    S.celebrated = S.celebrated || {};
+    if (!closed || S.celebrated[d] || route().name !== 'home') return;
+    S.celebrated[d] = true; save();
+    const el = document.createElement('div'); el.className = 'celebrate';
+    el.innerHTML = `<div class="cel-inner">${ringSVG(rg, 150, 12, true)}<div class="cel-t">All rings closed</div><div class="cel-s">${T.fmtDate(d, { weekday: 'long', day: 'numeric', month: 'long' })}</div></div>`;
+    el.onclick = () => el.remove(); document.body.appendChild(el);
+    if (navigator.vibrate) navigator.vibrate([30, 60, 30, 60, 80]);
+    setTimeout(() => el.classList.add('out'), 2200); setTimeout(() => el.remove(), 2800);
+  }
+  function ateAsPlanned(d) {
+    const logs = (S.nutrition.logs[d] = S.nutrition.logs[d] || []);
+    for (const m of T.mealsPlanned(d)) if (!logs.some((l) => l.planned && l.time === m.time)) logs.push({ id: T.uid(), mealId: m.mealId, name: m.meal?.name, portion: 1, planned: true, time: m.time });
+  }
+  const chips = (act, d, vals, extra = '') => vals.map((v) => `<button class="btn sm" data-a="${act}" data-d="${d}" data-v="${v}" ${extra}>+${v}</button>`).join('');
+  function sheetCloseDay(d) {
+    const rg = T.rings(d), plan = T.planFor(d), logs = T.mealLogs(d), mp = T.mealsPlanned(d), nm = nextModule();
+    const tm = T.addDays(d, 1), tplan = T.planFor(tm), tbills = T.occurrences(tm, tm).filter((o) => o.amount < 0);
+    const isSun = T.weekday(d) === 0;
+    let s = `<div class="row between"><div><div class="eyebrow">${isSun ? 'Close the day · weekly review' : 'Close the day'}</div><h2>${T.fmtDate(d, { weekday: 'long', day: 'numeric', month: 'long' })}</h2></div><button class="icon-btn" data-a="closeSheet">${icon.x}</button></div>`;
+    s += `<div class="rings-hero" style="margin:12px 0">${ringSVG(rg, 96, 12, true)}<div class="ring-legend">${ringLegend(rg)}</div></div>`;
+    s += `<div class="cd-step"><div class="cd-h">1 · Meals</div>${mp.map((m) => { const lg = logs.find((l) => l.planned && l.time === m.time); return `<div class="prow"><span class="ptime">${m.time}</span><div class="grow ${lg ? 'struck' : ''}">${h(m.meal?.name || 'Meal')}</div><button class="chk sm ${lg ? 'on' : ''}" data-a="toggleMeal" data-d="${d}" data-mid="${m.mealId}" data-time="${m.time}">${icon.check}</button></div>`; }).join('')}${mp.some((m) => !logs.some((l) => l.planned && l.time === m.time)) ? `<button class="btn sm block" data-a="ateAsPlanned" data-d="${d}" style="margin-top:6px">Ate everything as planned</button>` : ''}</div>`;
+    s += `<div class="cd-step"><div class="cd-h">2 · Training</div><div class="small">${plan.type === 'gym' ? h(T.tpl(plan.templateId)?.name || 'Gym') : plan.type === 'run' ? h(plan.label || 'Run') : 'Rest day'} — <span class="muted">${h(rg.workout.detail || rg.workout.state)}</span></div><div class="row wrap" style="gap:6px;margin-top:8px"><button class="btn sm" data-a="runSheet" data-d="${d}">+ Run / activity</button><button class="btn sm" data-a="dayStatus" data-d="${d}" data-v="rest">Mark rest</button><button class="btn sm" data-a="dayStatus" data-d="${d}" data-v="ill">Unwell</button></div></div>`;
+    s += `<div class="cd-step"><div class="cd-h">3 · Study <span class="muted">${T.studyMinutes(d)} / ${S.settings.readingGoalMin} min</span></div><div class="row wrap" style="gap:6px">${chips('quickStudy', d, [10, 20, 30], `data-c="${nm ? nm.c.id : ''}"`)}</div></div>`;
+    s += `<div class="cd-step"><div class="cd-h">4 · Guitar <span class="muted">${gMinutes(d)} / ${G().goal} min</span></div><div class="row wrap" style="gap:6px">${chips('quickGuitar', d, [10, 20, 30])}</div></div>`;
+    const J = (S.journal = S.journal || {});
+    s += `<div class="cd-step"><div class="cd-h">5 · One line</div><textarea style="min-height:70px" placeholder="One thing I did well, one thing to do better tomorrow" data-bind="journal.${d}">${h(J[d] || '')}</textarea></div>`;
+    if (isSun) s += weeklyReview(d);
+    s += `<div class="cd-step"><div class="cd-h">Tomorrow · ${T.fmtDate(tm, { weekday: 'long' })}</div><div class="small">${tplan.type === 'gym' ? '🏋️ ' + h(T.tpl(tplan.templateId)?.name || 'Gym') : tplan.type === 'run' ? '🏃 ' + h(tplan.label || 'Run') + ` (${tplan.target} min)` : '😌 Rest day'} · 🍽 ${S.nutrition.plans[T.dayType(tm)].label}${tbills.length ? ` · 💳 ${tbills.length} payment(s), ${T.gbp(-tbills.reduce((a, o) => a + o.amount, 0))}` : ''}</div></div>`;
+    s += `<button class="btn primary block" data-a="confirmClose" data-d="${d}" style="margin-top:14px">${(S.closed || {})[d] ? 'Update & close' : 'Close the day'}</button>`;
+    return s;
+  }
+  function weeklyReview(d) {
+    const ws = T.startOfWeek(d), days = T.range(ws, d), prev = T.range(T.addDays(ws, -7), T.addDays(ws, -1));
+    const av = T.ringAverages(days), pv = T.ringAverages(prev);
+    const sess = S.sessions.filter((x) => x.date >= ws && x.date <= d);
+    const prs = [];
+    for (const x of sess) for (const e of x.exercises) { const hist = T.exerciseHistory(e.name); const thisWk = hist.filter((hh) => hh.date >= ws && hh.date <= d), before = hist.filter((hh) => hh.date < ws); if (thisWk.length && before.length) { const b1 = Math.max(...thisWk.map((q) => q.best)), b0 = Math.max(...before.map((q) => q.best)); if (b1 > b0 && !prs.some((p) => p.n === e.name)) prs.push({ n: e.name, v: b1 }); } }
+    const gdays = days.filter((x) => gMinutes(x) >= G().goal).length, study = days.reduce((a, x) => a + T.studyMinutes(x), 0);
+    const bank = (S.finance.bank || []).filter((r) => r.date >= ws && r.date <= d && r.amount < 0), matched = new Set(Object.values(S.finance.overrides).map((o) => o.bankId).filter(Boolean));
+    const unplanned = bank.filter((r) => !matched.has(r.id)).reduce((a, r) => a - r.amount, 0);
+    const W = (S.weekly = S.weekly || {});
+    const dl = (k) => (av[k] != null && pv[k] != null ? Math.round((av[k] - pv[k]) * 100) : null);
+    return `<div class="cd-step wk"><div class="cd-h">Week in review</div><div class="grid3">${['workout', 'diet', 'reading'].map((k) => `<div class="kpi"><div class="v" style="color:var(--${k})">${pct(av[k])}</div><div class="l">${RING[k]}</div><div class="tiny ${dl(k) > 0 ? 'good' : dl(k) < 0 ? 'warn' : 'muted'}">${dl(k) == null ? '' : (dl(k) > 0 ? '▲' : dl(k) < 0 ? '▼' : '') + Math.abs(dl(k)) + ' pts'}</div></div>`).join('')}</div>
+      <ul class="plain" style="margin-top:8px"><li class="prow"><span>🏋️</span><div class="grow small">${sess.length} sessions${prs.length ? ` · new bests: ${prs.map((p) => h(p.n)).join(', ')}` : ''}</div></li><li class="prow"><span>🎸</span><div class="grow small">${gdays}/7 days at ${G().goal} min guitar</div></li><li class="prow"><span>📖</span><div class="grow small">${study} min study</div></li>${bank.length ? `<li class="prow"><span>💷</span><div class="grow small">${T.gbp(unplanned)} spent outside your plan (from your statement)</div></li>` : ''}</ul>
+      <label class="f">Focus for next week</label><textarea style="min-height:60px" placeholder="The one thing that would make next week a win" data-bind="weekly.${T.addDays(ws, 7)}">${h(W[T.addDays(ws, 7)] || '')}</textarea>${W[ws] ? `<p class="tiny muted">This week's focus was: “${h(W[ws])}”</p>` : ''}</div>`;
+  }
+  function lastBackupAt() { const c = T.syncCfg(); return Math.max(c && c.last || 0, S.settings.lastFileBackup || 0); }
+  function backupNudge() {
+    const c = T.syncCfg(), last = lastBackupAt(), days = last ? Math.floor((Date.now() - last) / 864e5) : null;
+    if (c && c.enabled && !c.lastErr && days != null && days < 7) return '';
+    if (!c && days != null && days < 7) return '';
+    if (S.settings.nudgeSnooze && Date.now() - S.settings.nudgeSnooze < 3 * 864e5) return '';
+    const msg = c && c.lastErr ? `Cloud backup failed: ${h(c.lastErr)}` : days == null ? 'Your logs live only on this phone. Turn on encrypted backups so nothing is ever lost.' : `Last backup ${days} days ago.`;
+    return `<div class="card tight nudge"><div class="row between" style="gap:10px"><div class="small">🔒 ${msg}</div><div class="row" style="gap:6px"><a class="btn primary sm" href="#/settings">Fix</a><button class="btn ghost sm" data-a="snoozeNudge">Later</button></div></div></div>`;
+  }
+  function sheetBackupSetup() {
+    return `<div class="row between"><h2>Encrypted cloud backup</h2><button class="icon-btn" data-a="closeSheet">${icon.x}</button></div>
+      <p class="small muted">Your data is encrypted on this phone with your passphrase, then saved to a <b>private</b> GitHub repository. GitHub only ever sees scrambled data.</p>
+      <details class="small" style="margin-bottom:10px"><summary>One-time setup (about 3 minutes)</summary><ol style="padding-left:18px;margin:8px 0 0;color:#d9d2c0">
+        <li>On GitHub, create a new <b>Private</b> repository called <code>the-key-backups</code> (tick "Add a README").</li>
+        <li>Go to <b>Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token</b>.</li>
+        <li>Name it "The Key backups", set expiry to 1 year, choose <b>Only select repositories → the-key-backups</b>.</li>
+        <li>Under <b>Repository permissions</b>, set <b>Contents</b> to <b>Read and write</b>. Nothing else.</li>
+        <li>Generate, copy the token, and paste it below.</li></ol></details>
+      <form data-f="backupOn"><div class="grid2"><div><label class="f">GitHub username</label><input type="text" name="owner" autocapitalize="none" required></div><div><label class="f">Repository</label><input type="text" name="repo" value="the-key-backups" autocapitalize="none" required></div></div>
+      <label class="f">Token</label><input type="password" name="token" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="github_pat_…" required>
+      <label class="f">Passphrase (use your The Key passphrase)</label><input type="password" name="pass" autocapitalize="none" autocorrect="off" spellcheck="false" required>
+      <div id="bkErr" class="small bad" style="min-height:18px;margin-top:8px"></div><button class="btn primary block">Turn on backups</button></form>
+      <p class="tiny muted">The token is stored only on this phone and is never included in exports. It can only touch that one repository.</p>`;
+  }
+  function sheetRestore() {
+    return `<div class="row between"><h2>Restore from cloud backup</h2><button class="icon-btn" data-a="closeSheet">${icon.x}</button></div><p class="small muted">Use this on a new phone. It replaces the data on this device with your latest backup.</p>
+      <form data-f="restoreCloud"><div class="grid2"><div><label class="f">GitHub username</label><input type="text" name="owner" autocapitalize="none" required></div><div><label class="f">Repository</label><input type="text" name="repo" value="the-key-backups" autocapitalize="none" required></div></div>
+      <label class="f">Token</label><input type="password" name="token" autocapitalize="none" autocorrect="off" spellcheck="false" required><label class="f">Passphrase</label><input type="password" name="pass" autocapitalize="none" autocorrect="off" spellcheck="false" required>
+      <div id="bkErr" class="small bad" style="min-height:18px;margin-top:8px"></div><button class="btn primary block">Restore</button></form>`;
+  }
+  function sheetFileBackup() {
+    const c = T.syncCfg();
+    return `<div class="row between"><h2>Save encrypted backup</h2><button class="icon-btn" data-a="closeSheet">${icon.x}</button></div><p class="small muted">Creates an encrypted file you can save to Files or iCloud Drive. You'll need your passphrase to restore it.</p><form data-f="fileBackup">${c ? '' : `<label class="f">Passphrase</label><input type="password" name="pass" autocapitalize="none" required>`}<div id="bkErr" class="small bad" style="min-height:18px;margin-top:8px"></div><button class="btn primary block">Create backup file</button></form>`;
+  }
+
   /* ---------- MORE / SETTINGS ---------- */
   function vMore() {
-    const tiles = [['#/nutrition', '🍽', 'Nutrition', 'Meal plan, log & shopping'], ['#/finance', '💷', 'Finance', 'Bills, payday & forecast'], ['#/guitar', '🎸', 'Guitar', 'CAGED practice & metronome'], ['#/lockin', '🗝', 'Lock-in', 'Your commitments'], ['#/progress', '📈', 'Progress', 'Weekly review & cycles'], ['#/discover', '📰', 'The McKenna Gazette', 'Your daily paper'], ['#/conversation', '✦', 'Great Conversation', 'Themes across books'], ['#/settings', '⚙️', 'Settings', 'Backup, reminders, install']];
+    const tiles = [['#/nutrition', '🍽', 'Nutrition', 'Meal plan, log & shopping'], ['#/finance', '💷', 'Finance', 'Safe to spend, bills & bank import'], ['#/discover', '📰', 'The McKenna Gazette', 'Your daily paper'], ['#/guitar', '🎸', 'Guitar', 'CAGED practice & metronome'], ['#/progress', '📈', 'Progress', 'Weekly review & cycles'], ['#/lockin', '🗝', 'Lock-in', 'Your commitments'], ['#/conversation', '✦', 'Great Conversation', 'Themes across books'], ['#/settings', '⚙️', 'Settings', 'Backup, reminders, install']];
     return top('More', { eyebrow: 'The Key' }) + `<div class="grid2">${tiles.map(([href, e, t, s]) => `<a class="card" href="${href}" style="text-decoration:none;color:inherit;margin:0"><div style="font-size:26px">${e}</div><div style="font-weight:700;margin-top:6px">${t}</div><div class="tiny muted">${s}</div></a>`).join('')}</div>`;
   }
   function vSettings() {
@@ -817,8 +935,9 @@ Start by asking about whichever of my answers is weakest.`;
         <hr class="sep"><div class="row between"><div class="grow"><div style="font-weight:600">In-app notifications</div><div class="tiny muted">Meal times & bills due tomorrow. Only fire while The Key is open or recently used (permission: ${perm}).</div></div><button class="btn sm" data-a="notif">${S.settings.notifications && perm === 'granted' ? 'On' : 'Enable'}</button></div><p class="tiny muted">iPhone: notifications need iOS 16.4+ and The Key added to your Home Screen. True background push needs a server — planned for a later version.</p></div>
       <div class="card"><h3>Install on your phone</h3>${standalone ? '<p class="good small">✓ Running as an installed app.</p>' : `<p class="small" style="margin-top:0"><b>iPhone (Safari):</b> Share button → <i>Add to Home Screen</i>.<br><b>Android (Chrome):</b> ⋮ menu → <i>Install app</i> / <i>Add to Home screen</i>.</p>`}<p class="tiny muted">Requires The Key to be served over HTTPS (see README for a free 2-minute deploy).</p></div>
       <div class="card"><h3>Personal setup</h3><p class="small muted" style="margin-top:0">${S.settings.unlocked ? `Unlocked on ${T.fmtDate(S.settings.unlocked)}. Your edits since then live only on this device — keep backups.` : 'Your routine, meal plan, bills, lock-in and quotes are stored encrypted on the site. Unlock them with your passphrase.'}</p><button class="btn block" data-a="startUnlock">${S.settings.unlocked ? 'Re-load setup from encrypted file' : 'Unlock personal setup'}</button></div>
+      ${(() => { const c = T.syncCfg(); return `<div class="card"><h3>🔒 Encrypted backup</h3>${c && c.enabled ? `<p class="small" style="margin-top:0">Backing up to <b>${h(c.owner)}/${h(c.repo)}</b> (private). ${c.last ? `Last backup ${new Date(c.last).toLocaleString('en-GB', { timeZone: 'Europe/London', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}.` : 'No backup yet.'}${c.lastErr ? `<br><span class="bad">Last attempt failed: ${h(c.lastErr)}</span>` : ''}</p><p class="tiny muted">Backs up automatically every 6 hours when something has changed, and keeps one dated copy per day.</p><div class="row" style="gap:8px"><button class="btn grow" data-a="backupNow">Back up now</button><button class="btn danger" data-a="backupOff">Turn off</button></div>` : `<p class="small muted" style="margin-top:0">Your logs currently live only on this phone. Turn on automatic encrypted backups to your private GitHub so you can restore everything on any device.</p><button class="btn primary block" data-a="backupSetup">Set up cloud backup</button>`}<div class="row" style="gap:8px;margin-top:10px"><button class="btn grow ghost" data-a="fileBackupSheet">Save encrypted file</button><button class="btn grow ghost" data-a="restoreSheet">Restore from cloud</button></div></div>`; })()}
       <div class="card"><h3>Your data</h3><p class="small muted" style="margin-top:0">Everything is stored privately on this device only — nothing is sent anywhere. Back up regularly, and use the backup file to move to a new phone.</p><div class="stack"><button class="btn block" data-a="exportData">Export backup (.json)</button><label class="btn block ghost" style="cursor:pointer">Import backup<input type="file" accept="application/json,.json" data-c="importData" style="display:none"></label><button class="btn danger block" data-a="wipe">Delete all data</button></div></div>
-      <p class="tiny muted" style="text-align:center">The Key · v1.8 · local-first · ${h(S.settings.tagline)}</p>`;
+      <p class="tiny muted" style="text-align:center">The Key · v2.0 · local-first · ${h(S.settings.tagline)}</p>`;
   }
 
   /* ---------- UNLOCK ---------- */
@@ -830,6 +949,7 @@ Start by asking about whichever of my answers is weakest.`;
       <div id="unlockErr" class="small bad" style="min-height:20px;margin-top:8px"></div>
       <button class="btn primary block">Unlock my setup</button></form>
       <p class="tiny muted" style="margin-top:14px">Your routine, meal plan, bills, lock-in and quotes are stored on this site encrypted. They are decrypted here, on this device, and saved privately on it. The passphrase never leaves your phone.${replacing ? ' <b>Unlocking replaces the data currently on this device</b> — export a backup first if needed.' : ''}</p>
+      <button class="link" style="margin-top:6px" data-a="restoreSheet">New phone? Restore from your cloud backup</button><br>
       <button class="link" style="margin-top:6px" data-a="skipUnlock">${FIRST_RUN ? 'Start with a blank app instead' : 'Cancel'}</button></div>`;
   }
 
@@ -839,13 +959,13 @@ Start by asking about whichever of my answers is weakest.`;
     S = T.S;
     const r = route();
     const map = { home: vHome, calendar: vCalendar, training: vTraining, academy: vAcademy, more: vMore, nutrition: vNutrition, finance: vFinance, lockin: vLockin, progress: vProgress, settings: vSettings, session: () => vSession(r.args[0]), template: () => vTemplate(r.args[0]), course: () => vCourse(r.args[0]), module: () => vModule(r.args[0], r.args[1]), conversation: vConversation, discover: vDiscover, guitar: vGuitar };
-    const tabOf = { session: 'training', template: 'training', course: 'academy', module: 'academy', conversation: 'academy', nutrition: 'more', finance: 'more', lockin: 'more', progress: 'more', settings: 'more', guitar: 'more' };
+    const tabOf = { session: 'training', template: 'training', course: 'academy', module: 'academy', conversation: 'academy', nutrition: 'more', finance: 'more', lockin: 'more', progress: 'more', settings: 'more', guitar: 'more', discover: 'home' };
     document.body.classList.toggle('locked', !!ui.unlock);
     if (ui.unlock) { $app.innerHTML = vUnlock(); renderSheet(); return; }
     const y = window.scrollY, same = render.last === location.hash;
     $app.innerHTML = (map[r.name] || vHome)();
     render.last = location.hash;
-    if (!same) window.scrollTo(0, 0); else window.scrollTo(0, y);
+    if (!same) { const saved = r.name === 'module' ? (S.study.scroll || {})[r.args.join(':')] : 0; window.scrollTo(0, 0); if (saved > 200) setTimeout(() => { window.scrollTo({ top: saved, behavior: 'smooth' }); toast('Picked up where you left off'); }, 60); } else window.scrollTo(0, y);
     document.querySelectorAll('nav.tabs a').forEach((a) => a.classList.toggle('on', a.dataset.tab === (tabOf[r.name] || r.name)));
     document.body.classList.toggle('on-guitar', r.name === 'guitar'); if (r.name === 'guitar') gTimerLoop(); else clearInterval(gTick);
     renderSheet();
@@ -896,7 +1016,19 @@ Start by asking about whichever of my answers is weakest.`;
     startSession: (el) => { const s = newSession(el.dataset.id, el.dataset.d); ui.sheet = null; location.hash = '#/session/' + s.id; },
     goSession: (el) => { location.hash = '#/session/' + el.dataset.id; },
     trainTab: (el) => { ui.trainTab = el.dataset.t; if (!location.hash.startsWith('#/training')) location.hash = '#/training'; else render(); },
-    setDone: (el) => { const s = S.sessions.find((x) => x.id === el.dataset.s); const x = s.exercises[el.dataset.e].sets[el.dataset.x]; x.done = !x.done; if (x.done && navigator.vibrate) navigator.vibrate(15); refresh(); },
+    setDone: (el) => {
+      const s = S.sessions.find((x) => x.id === el.dataset.s), ei = +el.dataset.e, e = s.exercises[ei], x = e.sets[el.dataset.x];
+      x.done = !x.done; if (x.done && navigator.vibrate) navigator.vibrate(15);
+      const rest = S.settings.restSec ?? 90;
+      if (x.done && !x.warmup && rest) startTimer(rest);
+      if (x.done && (S.settings.sessionView || 'focus') === 'focus' && e.sets.every((q) => q.done) && s.exercises[ei + 1]) ui.focus = { id: s.id, i: ei + 1 };
+      refresh();
+    },
+    stepVal: (el) => { const s = S.sessions.find((x) => x.id === el.dataset.s), x = s.exercises[el.dataset.e].sets[el.dataset.x], k = el.dataset.k; x[k] = Math.max(0, T.round2((+x[k] || 0) + +el.dataset.d)); refresh(); },
+    focusGo: (el) => { ui.focus = { id: el.dataset.s, i: +el.dataset.i }; render(); window.scrollTo(0, 0); },
+    sessView: (el) => { S.settings.sessionView = el.dataset.v; refresh(); },
+    restSet: (el) => { S.settings.restSec = +el.dataset.v; refresh(); },
+    useLast: (el) => { const s = S.sessions.find((x) => x.id === el.dataset.s), e = s.exercises[el.dataset.e], p = lastSets(e, s); if (!p) return; e.sets = p.sets.map((q) => ({ w: q.w, r: q.r, rpe: null, done: false, warmup: false })); refresh(); toast('Copied last session'); },
     setWarm: (el) => { const s = S.sessions.find((x) => x.id === el.dataset.s); const x = s.exercises[el.dataset.e].sets[el.dataset.x]; x.warmup = !x.warmup; refresh(); },
     setAdd: (el) => { const s = S.sessions.find((x) => x.id === el.dataset.s); const e = s.exercises[el.dataset.e]; const l = e.sets[e.sets.length - 1] || {}; e.sets.push({ w: l.w ?? null, r: l.r ?? null, rpe: null, done: false, warmup: false }); refresh(); },
     setDel: (el) => { const s = S.sessions.find((x) => x.id === el.dataset.s); s.exercises[el.dataset.e].sets.pop(); refresh(); },
@@ -967,6 +1099,21 @@ Start by asking about whichever of my answers is weakest.`;
     gResume: () => { const r = G().running; if (!r) return; r.since = Date.now(); save(); gRefreshHead(); },
     gFinish: () => { const r = G().running; if (!r) return; const min = Math.round(gElapsed() / 60000); gLog(min, r.date); G().running = null; save(); gRefreshHead(); toast(min ? `Logged ${min} min of guitar` : 'Under a minute — not logged'); },
     gManual: () => openSheet(() => `<div class="row between"><h2>Log guitar practice</h2><button class="icon-btn" data-a="closeSheet">${icon.x}</button></div><form data-f="guitar"><div class="grid2"><div><label class="f">Date</label><input type="date" name="date" value="${T.today()}"></div><div><label class="f">Minutes</label><input type="number" name="min" value="30" min="1" required></div></div><button class="btn primary block" style="margin-top:12px">Log</button></form>`),
+    closeDay: (el) => { const d = el.dataset.d || T.today(); openSheet(() => sheetCloseDay(d)); },
+    confirmClose: (el) => { const d = el.dataset.d; (S.closed = S.closed || {})[d] = true; save(); closeSheet(); render(); toast('Day closed. Rest well.'); setTimeout(() => maybeCelebrate(d), 300); },
+    ateAsPlanned: (el) => { ateAsPlanned(el.dataset.d); refresh(); toast('All planned meals logged'); },
+    quickStudy: (el) => { S.study.log.push({ id: T.uid(), date: el.dataset.d, course: el.dataset.c || '', kind: 'reading', min: +el.dataset.v }); refresh(); toast(`+${el.dataset.v} min study`); },
+    quickGuitar: (el) => { gLog(+el.dataset.v, el.dataset.d); refresh(); toast(`+${el.dataset.v} min guitar`); },
+    gStartGo: () => { G().running = { since: Date.now(), acc: 0, date: T.today() }; save(); location.hash = '#/guitar'; },
+    daySwipe: (el) => { const d2 = T.addDays(el.dataset.d, +el.dataset.n); if (d2 > T.today()) return; openSheet(() => sheetDay(d2)); },
+    swipeWeek: (el) => A.weekMove({ dataset: { n: String(+el.dataset.n * 7) } }),
+    readSize: (el) => { S.settings.readSize = Math.min(26, Math.max(15, (S.settings.readSize || 18) + +el.dataset.n)); save(); const l = document.querySelector('.lecture'); if (l) l.style.fontSize = S.settings.readSize + 'px'; },
+    backupSetup: () => openSheet(sheetBackupSetup),
+    restoreSheet: () => openSheet(sheetRestore),
+    fileBackupSheet: () => openSheet(sheetFileBackup),
+    snoozeNudge: () => { S.settings.nudgeSnooze = Date.now(); refresh(); },
+    backupNow: async (el) => { el.disabled = true; el.textContent = 'Backing up…'; try { await T.backupNow(); toast('Encrypted backup saved'); } catch (e) { toast(e.message); } render(); },
+    backupOff: async () => { if (!confirm('Turn off cloud backups on this phone? Existing backups on GitHub stay where they are.')) return; await T.disableBackup(); render(); toast('Cloud backup turned off'); },
     togglePass: (el) => { const i = document.getElementById('pp'); if (i) i.type = i.type === 'password' ? 'text' : 'password'; },
     skipUnlock: () => { ui.unlock = false; S.settings.unlockSkipped = true; save(); render(); },
     startUnlock: () => { ui.unlock = true; render(); },
@@ -1003,6 +1150,17 @@ Start by asking about whichever of my answers is weakest.`;
       catch (e) { err.textContent = e.message; btn.disabled = false; btn.textContent = 'Apply update'; }
     },
     guitar: (f, d) => { gLog(Math.max(0, Math.round(+d.min || 0)), d.date); save(); closeSheet(); gRefreshHead(); toast('Practice logged'); },
+    backupOn: async (f, d) => { const err = f.querySelector('#bkErr'), btn = f.querySelector('button.primary'); btn.disabled = true; btn.textContent = 'Encrypting & saving…'; err.textContent = ''; try { await T.enableBackup(d); closeSheet(); render(); toast('Encrypted backups are on'); } catch (e) { err.textContent = e.message; btn.disabled = false; btn.textContent = 'Turn on backups'; } },
+    restoreCloud: async (f, d) => { const err = f.querySelector('#bkErr'), btn = f.querySelector('button.primary'); btn.disabled = true; btn.textContent = 'Restoring…'; err.textContent = ''; try { const at = await T.restoreFromGitHub(d); S = T.S; ui.unlock = false; closeSheet(); render.last = null; location.hash = '#/home'; render(); toast('Restored backup from ' + new Date(at).toLocaleDateString('en-GB')); } catch (e) { err.textContent = e.message; btn.disabled = false; btn.textContent = 'Restore'; } },
+    fileBackup: async (f, d) => {
+      const err = f.querySelector('#bkErr');
+      try {
+        const txt = await T.encryptedFile(d.pass), name = `the-key-encrypted-${T.today()}.json`;
+        const file = new File([txt], name, { type: 'application/json' });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) await navigator.share({ files: [file], title: 'The Key backup' }); else T.download(name, txt);
+        S.settings.lastFileBackup = Date.now(); save(); closeSheet(); render(); toast('Encrypted backup created');
+      } catch (e) { if (e.name !== 'AbortError') err.textContent = e.message; }
+    },
     quote: (f, d) => { (S.myQuotes = S.myQuotes || []).push({ id: T.uid(), text: d.text.trim(), by: d.by.trim() }); refresh(); toast('Quote added'); },
     cycle: (f, d) => {
       if (!d.start || !d.end || d.end < d.start) return toast('End date must be on or after the start date');
@@ -1017,6 +1175,7 @@ Start by asking about whichever of my answers is weakest.`;
     schedType: (el) => { const w = el.dataset.w, v = el.value; S.schedule[w] = v === 'rest' ? { type: 'rest' } : v.startsWith('gym:') ? { type: 'gym', templateId: v.slice(4) } : { type: 'run', target: S.schedule[w]?.target || 30, optional: v === 'run-opt', label: v === 'run-opt' ? 'Optional run' : 'Run' }; refresh(); },
     schedTarget: (el) => { S.schedule[el.dataset.w].target = +el.value || 30; save(); },
     histEx: (el) => { ui.histEx = el.value; render(); },
+    rpeAll: (el) => { const s = S.sessions.find((x) => x.id === el.dataset.s); for (const q of s.exercises[el.dataset.e].sets) if (q.done || !el.value) q.rpe = el.value ? +el.value : null; save(); },
     portion: (el) => { const l = (S.nutrition.logs[el.dataset.d] || []).find((x) => x.id === el.dataset.id); if (l) l.portion = +el.value; refresh(); },
     swap: (el) => { const l = (S.nutrition.logs[el.dataset.d] || []).find((x) => x.id === el.dataset.id); if (l) { l.mealId = el.value; l.name = T.meal(el.value)?.name; } refresh(); },
     bankFile: (el) => {
@@ -1027,7 +1186,7 @@ Start by asking about whichever of my answers is weakest.`;
         el.value = '';
       });
     },
-    importData: (el) => { const file = el.files[0]; if (!file) return; file.text().then((txt) => { try { const obj = JSON.parse(txt); if (!confirm('Replace all current data with this backup?')) return; T.importData(obj); S = T.S; render(); toast('Backup restored'); } catch (e) { alert('Import failed: ' + e.message); } }); },
+    importData: (el) => { const file = el.files[0]; if (!file) return; file.text().then(async (txt) => { try { let obj = JSON.parse(txt); if (obj.app === 'thekey-backup') { const pass = prompt('This backup is encrypted. Enter your passphrase:'); if (!pass) return; obj = (await T.decryptBackup(obj, pass)).data; } if (!confirm('Replace all current data with this backup?')) return; T.importData(obj); S = T.S; render(); toast('Backup restored'); } catch (e) { alert('Import failed: ' + e.message); } el.value = ''; }); },
   };
 
   /* ---------- delegation ---------- */
@@ -1050,6 +1209,26 @@ Start by asking about whichever of my answers is weakest.`;
   });
   document.addEventListener('input', (e) => { const el = e.target; if (el.dataset.bind && el.tagName !== 'SELECT' && el.type !== 'date' && el.type !== 'time') { bindVal(el); saveSoon(); } });
   function bindVal(el) { const v = el.type === 'checkbox' ? el.checked : el.dataset.type === 'num' ? T.num(el.value) : el.value; setPath(S, el.dataset.bind, v); }
+
+  /* ---------- reading progress + resume ---------- */
+  let rdT = null;
+  window.addEventListener('scroll', () => {
+    const fill = document.getElementById('readBarFill'); if (!fill) return;
+    const max = document.documentElement.scrollHeight - innerHeight; fill.style.width = (max > 0 ? Math.min(100, (scrollY / max) * 100) : 0) + '%';
+    clearTimeout(rdT); rdT = setTimeout(() => { const r = route(); if (r.name !== 'module') return; (S.study.scroll = S.study.scroll || {})[r.args.join(':')] = Math.round(scrollY); saveSoon(); }, 400);
+  }, { passive: true });
+
+  /* ---------- swipe gestures ---------- */
+  let sw = null;
+  document.addEventListener('touchstart', (e) => { const el = e.target.closest('[data-swipe]'); if (!el || e.touches.length > 1) { sw = null; return; } sw = { el, x: e.touches[0].clientX, y: e.touches[0].clientY, t: Date.now() }; }, { passive: true });
+  document.addEventListener('touchend', (e) => {
+    if (!sw) return; const t = e.changedTouches[0], dx = t.clientX - sw.x, dy = t.clientY - sw.y;
+    const el = sw.el, t0 = sw.t; sw = null;
+    if (Math.abs(dx) < 60 || Math.abs(dy) > 50 || Date.now() - t0 > 800) return;
+    const fn = A[el.dataset.swipe]; if (!fn) return;
+    if (navigator.vibrate) navigator.vibrate(8);
+    fn({ dataset: { ...el.dataset, n: String(dx < 0 ? 1 : -1) } });
+  }, { passive: true });
 
   /* ---------- rest timer ---------- */
   let timerEnd = 0, timerInt = null;
@@ -1080,6 +1259,8 @@ Start by asking about whichever of my answers is weakest.`;
   if (FIRST_RUN) ui.unlock = true;
   async function checkUpdate() { if (!S.settings.unlocked || ui.unlock) return; const hd = await T.personalHeader(); if (hd && hd.rev > (S.settings.personalRev || 0)) { ui.update = hd; if (!ui.sheet) render(); } }
   setTimeout(checkUpdate, 1200);
+  setTimeout(() => T.maybeAutoBackup(), 4000);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) T.maybeAutoBackup(); });
   if (!location.hash) location.hash = '#/home';
   render();
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('sw.js').catch(() => {});

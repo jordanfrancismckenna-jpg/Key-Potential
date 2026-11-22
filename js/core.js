@@ -251,6 +251,24 @@
     const out = []; for (let i = 0; i <= days; i++) { const d = addDays(from, i); const p = projectedBalance(d); out.push({ date: d, bal: p ? p.balance : null }); }
     return out;
   }
+  /* Safe to spend until payday: the lowest projected balance between now and the day before the next
+     payday, minus your low-balance buffer. Using the lowest point (not the end) protects against a dip
+     when a big bill lands mid-month. */
+  function nextPayday(from = today()) {
+    const inc = S.finance.items.filter((i) => i.type === 'income').sort((a, b) => b.amount - a.amount)[0];
+    if (!inc) return null;
+    const o = occurrences(addDays(from, 1), addDays(from, 62)).find((x) => x.itemId === inc.id);
+    return o ? o.date : null;
+  }
+  function safeToSpend(d = today()) {
+    const pay = nextPayday(d), now = projectedBalance(d);
+    if (!pay || !now) return null;
+    let low = { bal: now.balance, date: d };
+    for (let x = addDays(d, 1); x < pay; x = addDays(x, 1)) { const p = projectedBalance(x); if (p && p.balance < low.bal) low = { bal: p.balance, date: x }; }
+    const buffer = +S.settings.lowBalance || 0, days = Math.max(1, diffDays(d, pay));
+    const safe = round2(low.bal - buffer);
+    return { safe, perDay: round2(safe / days), payday: pay, days, lowest: low.bal, lowestDate: low.date, buffer, balance: now.balance };
+  }
   function monthlySummary() {
     let inc = 0, exp = 0, weekly = 0;
     for (const it of S.finance.items) {
@@ -435,6 +453,85 @@
     return { added, matched: again.matches.length };
   }
 
+
+  /* ---------- encrypted backups (AES-256-GCM; key from your passphrase, kept non-extractable in IndexedDB) ---------- */
+  const SYNC_KEY = 'thekey:sync'; // token + repo live here, deliberately outside your data so exports never include them
+  const syncCfg = () => { try { return JSON.parse(localStorage.getItem(SYNC_KEY)) || null; } catch (e) { return null; } };
+  const setSyncCfg = (c) => (c ? localStorage.setItem(SYNC_KEY, JSON.stringify(c)) : localStorage.removeItem(SYNC_KEY));
+  function idb() { return new Promise((res, rej) => { const r = indexedDB.open('thekey', 1); r.onupgradeneeded = () => r.result.createObjectStore('kv'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
+  async function kvGet(k) { const db = await idb(); return new Promise((res) => { const q = db.transaction('kv').objectStore('kv').get(k); q.onsuccess = () => res(q.result); q.onerror = () => res(null); }); }
+  async function kvSet(k, v) { const db = await idb(); return new Promise((res) => { const tx = db.transaction('kv', 'readwrite'); v === undefined ? tx.objectStore('kv').delete(k) : tx.objectStore('kv').put(v, k); tx.oncomplete = () => res(); }); }
+  const u8b64 = (u8) => { let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); };
+  const b64u8 = (str) => Uint8Array.from(atob(str), (c) => c.charCodeAt(0));
+  const BK_ITER = 600000;
+  async function deriveKey(pass, salt) {
+    const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pass.trim()), 'PBKDF2', false, ['deriveKey']);
+    return crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: BK_ITER, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+  }
+  async function encryptState(key, salt) {
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(JSON.stringify(S))));
+    return { v: 1, app: 'thekey-backup', at: new Date().toISOString(), kdf: 'PBKDF2-SHA256', iter: BK_ITER, salt: u8b64(salt), iv: u8b64(iv), ct: u8b64(ct) };
+  }
+  async function decryptBackup(box, pass) {
+    if (!box || box.app !== 'thekey-backup') throw new Error('This is not an encrypted The Key backup.');
+    const key = await deriveKey(pass, b64u8(box.salt));
+    let plain; try { plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64u8(box.iv) }, key, b64u8(box.ct)); } catch (e) { throw new Error('That passphrase didn\'t decrypt the backup.'); }
+    return { data: JSON.parse(new TextDecoder().decode(plain)), key, salt: b64u8(box.salt) };
+  }
+  async function gh(cfg, path, opts = {}) {
+    const r = await fetch(`https://api.github.com/repos/${cfg.owner}/${cfg.repo}${path}`, { ...opts, headers: { Authorization: `Bearer ${cfg.token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', ...(opts.headers || {}) } });
+    if (r.status === 404 && opts.allow404) return null;
+    if (!r.ok) { let m = ''; try { m = (await r.json()).message; } catch (e) {} throw new Error(r.status === 401 ? 'GitHub rejected the token (expired or wrong).' : r.status === 403 ? 'The token lacks permission for this repository (needs Contents: read and write).' : r.status === 404 ? 'Repository not found, or the token cannot see it.' : `GitHub error ${r.status}${m ? ': ' + m : ''}`); }
+    return r.json();
+  }
+  async function ghPutFile(cfg, file, text) {
+    const cur = await gh(cfg, `/contents/${file}`, { allow404: true });
+    return gh(cfg, `/contents/${file}`, { method: 'PUT', body: JSON.stringify({ message: `The Key backup ${new Date().toISOString()}`, content: u8b64(new TextEncoder().encode(text)), ...(cur && cur.sha ? { sha: cur.sha } : {}) }) });
+  }
+  async function enableBackup({ owner, repo, token, pass }) {
+    const cfg = { owner: owner.trim(), repo: repo.trim(), token: token.trim() };
+    const info = await gh(cfg, '');
+    if (!info.private) throw new Error('That repository is public. Use a private repository for backups.');
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    await kvSet('backupKey', await deriveKey(pass, salt));
+    setSyncCfg({ ...cfg, salt: u8b64(salt), enabled: true, last: 0 });
+    return backupNow();
+  }
+  const stateHash = () => { const t = JSON.stringify(S); let h = 5381; for (let i = 0; i < t.length; i++) h = ((h << 5) + h + t.charCodeAt(i)) >>> 0; return h; };
+  async function backupNow() {
+    const cfg = syncCfg(); if (!cfg || !cfg.enabled) throw new Error('Cloud backup is not set up.');
+    const key = await kvGet('backupKey'); if (!key) throw new Error('Backup key missing on this device — turn backups off and on again.');
+    const box = JSON.stringify(await encryptState(key, b64u8(cfg.salt)));
+    try {
+      await ghPutFile(cfg, 'backups/latest.json', box);
+      await ghPutFile(cfg, `backups/${today()}.json`, box);
+      setSyncCfg({ ...cfg, last: Date.now(), lastHash: stateHash(), lastErr: null });
+      return true;
+    } catch (e) { setSyncCfg({ ...cfg, lastErr: e.message, lastTry: Date.now() }); throw e; }
+  }
+  async function maybeAutoBackup() {
+    const cfg = syncCfg(); if (!cfg || !cfg.enabled || !navigator.onLine) return false;
+    if (Date.now() - (cfg.last || 0) < 6 * 3600e3 || cfg.lastHash === stateHash()) return false;
+    if (cfg.lastTry && Date.now() - cfg.lastTry < 30 * 60e3 && cfg.lastErr) return false;
+    try { await backupNow(); return true; } catch (e) { return false; }
+  }
+  function disableBackup() { setSyncCfg(null); return kvSet('backupKey', undefined); }
+  async function restoreFromGitHub({ owner, repo, token, pass }) {
+    const cfg = { owner: owner.trim(), repo: repo.trim(), token: token.trim() };
+    const f = await gh(cfg, '/contents/backups/latest.json');
+    const box = JSON.parse(new TextDecoder().decode(b64u8(f.content.replace(/\n/g, ''))));
+    const { data, key, salt } = await decryptBackup(box, pass);
+    importData(data);
+    await kvSet('backupKey', key); setSyncCfg({ ...cfg, salt: u8b64(salt), enabled: true, last: Date.now(), lastHash: stateHash() });
+    return box.at;
+  }
+  async function encryptedFile(pass) {
+    let key = await kvGet('backupKey'), cfg = syncCfg(), salt;
+    if (key && cfg) salt = b64u8(cfg.salt); else { if (!pass) throw new Error('Enter your passphrase.'); salt = crypto.getRandomValues(new Uint8Array(16)); key = await deriveKey(pass, salt); }
+    return JSON.stringify(await encryptState(key, salt));
+  }
+
   /* ---------- encrypted personal setup (AES-256-GCM, key from PBKDF2-SHA256) ---------- */
   const b64 = (str) => Uint8Array.from(atob(str), (c) => c.charCodeAt(0));
   async function personalHeader(url = 'personal.enc.json') {
@@ -481,11 +578,11 @@
     return S;
   }
 
-  window.TK = { unlockPersonal, personalHeader, parseBankCSV, reconcile, applyImport, parseDate, KEY, uid, esc, clamp, round2, gbp, num, londonNow, today, addDays, diffDays, weekday, startOfWeek, daysInMonth, fmtDate, range, toD, fromD,
+  window.TK = { syncCfg, enableBackup, backupNow, maybeAutoBackup, disableBackup, restoreFromGitHub, decryptBackup, encryptedFile, kvGet, unlockPersonal, personalHeader, parseBankCSV, reconcile, applyImport, parseDate, KEY, uid, esc, clamp, round2, gbp, num, londonNow, today, addDays, diffDays, weekday, startOfWeek, daysInMonth, fmtDate, range, toD, fromD,
     load, save, resetAll, importData, get S() { return S; },
     currentCycle, cycleInfo, tpl, planFor, sessionsOn, runsOn, workSets, plannedSetCount, e1rm, exerciseHistory, suggestNext,
     dayType, meal, mealsPlanned, mealLogs, dayNutrition,
     workoutRing, dietRing, readingRing, rings, ringAverages, studyMinutes,
-    occurrences, undated, latestAnchor, projectedBalance, forecastSeries, monthlySummary,
+    occurrences, undated, nextPayday, safeToSpend, latestAnchor, projectedBalance, forecastSeries, monthlySummary,
     course, modKey, courseProgress, unlocked, download, buildICS };
 })();
