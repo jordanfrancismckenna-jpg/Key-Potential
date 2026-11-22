@@ -454,7 +454,7 @@
       for (const it of incF.items) { const ex = F.items.find((x) => x.id === it.id); if (ex) Object.assign(ex, it); else F.items.push({ ...it }); }
     }
     // training templates: add new ones, and fill templates that are still empty — never overwrite one you've built up
-    for (const t of data.seed.templates || []) { const ex = S.templates.find((x) => x.id === t.id); if (!ex) S.templates.push(t); else if (!ex.exercises.length && t.exercises.length) { ex.exercises = t.exercises; ex.name = t.name; delete ex.note; } }
+    for (const t of data.seed.templates || []) { const ex = S.templates.find((x) => x.id === t.id); if (!ex) S.templates.push(t); else if (!ex.exercises.length && t.exercises.length) { ex.exercises = t.exercises; ex.name = t.name; delete ex.note; } else if (ex.exercises.map((e) => e.name).join('|') === t.exercises.map((e) => e.name).join('|')) ex.name = t.name; }
     if (data.lockin) S.personal = { ...(S.personal || {}), lockin: data.lockin };
     if (data.articles) S.personal = { ...(S.personal || {}), articles: data.articles };
     if (data.seed.myQuotes) { const have = new Set((S.myQuotes || []).map((q) => q.id)); for (const q of data.seed.myQuotes) if (!have.has(q.id)) (S.myQuotes = S.myQuotes || []).push(q); }
