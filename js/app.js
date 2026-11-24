@@ -830,7 +830,7 @@ Start by asking about whichever of my answers is weakest.`;
       <div class="row" style="gap:6px;justify-content:flex-end;margin-top:4px">${!run ? `<button class="btn primary sm" data-a="gStart">▶ Start</button>` : `${paused ? `<button class="btn sm" data-a="gResume">▶</button>` : `<button class="btn sm" data-a="gPause">❚❚</button>`}<button class="btn primary sm" data-a="gFinish">Finish</button>`}</div></div></div>
       <div class="row" style="gap:4px;margin-top:10px">${week.map((w) => `<div style="flex:1;text-align:center"><div style="height:6px;border-radius:3px;background:${w.m >= g.goal ? 'var(--gold)' : w.m ? 'var(--goldDim)' : 'var(--line)'}"></div><div class="tiny faint" style="margin-top:2px">${WD[T.weekday(w.x)][0]}</div></div>`).join('')}</div>
       <div class="row between" style="margin-top:8px"><button class="link small" data-a="gManual">+ Log minutes manually</button><a class="link small" href="guitar/index.html" target="_blank" rel="noopener">Open full screen ↗</a></div></div>
-      <iframe class="guitar-frame" src="guitar/index.html" title="CAGED Practice" allow="autoplay"></iframe>`;
+      <iframe class="guitar-frame" src="guitar/index.html" title="CAGED Practice" allow="autoplay; microphone"></iframe>`;
     return out;
   }
   function gRefreshHead() { const head = document.querySelector('.guitar-head'); if (!head) return; const tmp = document.createElement('div'); tmp.innerHTML = vGuitar(); head.replaceWith(tmp.querySelector('.guitar-head')); gTimerLoop(); }
@@ -942,7 +942,7 @@ Start by asking about whichever of my answers is weakest.`;
       <div class="card"><h3>Personal setup</h3><p class="small muted" style="margin-top:0">${S.settings.unlocked ? `Unlocked on ${T.fmtDate(S.settings.unlocked)}. Your edits since then live only on this device — keep backups.` : 'Your routine, meal plan, bills, lock-in and quotes are stored encrypted on the site. Unlock them with your passphrase.'}</p><button class="btn block" data-a="startUnlock">${S.settings.unlocked ? 'Re-load setup from encrypted file' : 'Unlock personal setup'}</button></div>
       ${(() => { const c = T.syncCfg(); return `<div class="card"><h3>🔒 Encrypted backup</h3>${c && c.enabled ? `<p class="small" style="margin-top:0">Backing up to <b>${h(c.owner)}/${h(c.repo)}</b> (private). ${c.last ? `Last backup ${new Date(c.last).toLocaleString('en-GB', { timeZone: 'Europe/London', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}.` : 'No backup yet.'}${c.lastErr ? `<br><span class="bad">Last attempt failed: ${h(c.lastErr)}</span>` : ''}</p><p class="tiny muted">Backs up automatically every 6 hours when something has changed, and keeps one dated copy per day.</p><div class="row" style="gap:8px"><button class="btn grow" data-a="backupNow">Back up now</button><button class="btn danger" data-a="backupOff">Turn off</button></div>` : `<p class="small muted" style="margin-top:0">Your logs currently live only on this phone. Turn on automatic encrypted backups to your private GitHub so you can restore everything on any device.</p><button class="btn primary block" data-a="backupSetup">Set up cloud backup</button>`}<div class="row" style="gap:8px;margin-top:10px"><button class="btn grow ghost" data-a="fileBackupSheet">Save encrypted file</button><button class="btn grow ghost" data-a="restoreSheet">Restore from cloud</button></div></div>`; })()}
       <div class="card"><h3>Your data</h3><p class="small muted" style="margin-top:0">Everything is stored privately on this device only — nothing is sent anywhere. Back up regularly, and use the backup file to move to a new phone.</p><div class="stack"><button class="btn block" data-a="exportData">Export backup (.json)</button><label class="btn block ghost" style="cursor:pointer">Import backup<input type="file" accept="application/json,.json" data-c="importData" style="display:none"></label><button class="btn danger block" data-a="wipe">Delete all data</button></div></div>
-      <p class="tiny muted" style="text-align:center">The Key · v2.2 · local-first · ${h(S.settings.tagline)}</p>`;
+      <p class="tiny muted" style="text-align:center">The Key · v2.3 · local-first · ${h(S.settings.tagline)}</p>`;
   }
 
   /* ---------- UNLOCK ---------- */
@@ -1287,6 +1287,25 @@ Start by asking about whichever of my answers is weakest.`;
 
   /* ---------- boot ---------- */
   window.addEventListener('hashchange', () => { ui.sheet = null; render(); });
+  // Rhythm Trainer (inside the guitar iframe): progress lives in your encrypted data; practice time feeds the Guitar ring
+  window.addEventListener('message', (e) => {
+    if (e.origin !== location.origin || !e.data || !S) return;
+    const m = e.data;
+    if (m.type === 'tk-rhythm-load') { try { e.source.postMessage({ type: 'tk-rhythm-data', data: G().rhythm || null }, location.origin); } catch (x) {} }
+    else if (m.type === 'tk-rhythm-save' && m.data && m.data.v) { G().rhythm = m.data; saveSoon(); }
+    else if (m.type === 'tk-guitar-seconds' && m.sec > 0) {
+      const g = G();
+      if (g.running) return; // the timer is already counting this time
+      g.rSec = (g.rSec || 0) + Math.min(m.sec, 3 * 3600);
+      const min = Math.floor(g.rSec / 60);
+      if (!min) { saveSoon(); return; }
+      g.rSec -= min * 60;
+      const date = /^\d{4}-\d{2}-\d{2}$/.test(m.date) ? m.date : T.today();
+      const ent = g.log.find((x) => x.date === date && x.src === 'rhythm');
+      if (ent) ent.min += min; else g.log.push({ id: T.uid(), date, min, src: 'rhythm' });
+      save(); if (route().name === 'guitar') gRefreshHead();
+    }
+  });
   document.addEventListener('visibilitychange', () => { if (!document.hidden && route().name !== 'guitar') render(); });
   if (FIRST_RUN) ui.unlock = true;
   async function checkUpdate() { if (!S.settings.unlocked || ui.unlock) return; const hd = await T.personalHeader(); if (hd && hd.rev > (S.settings.personalRev || 0)) { ui.update = hd; if (!ui.sheet) render(); } }

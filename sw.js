@@ -1,6 +1,6 @@
 /* The Key service worker — offline app shell. Your data lives in localStorage, never in this cache. */
-const CACHE = 'thekey-v2.2.0';
-const SHELL = ['./', './index.html', './css/styles.css', './js/gazette.js', './js/data.js', './js/core.js', './js/discover.js', './js/app.js', './manifest.webmanifest', './guitar/index.html', './personal.enc.json', './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png', './fonts/unifrakturmaguntia-latin-400-normal.woff2', './fonts/playfair-display-latin-700-normal.woff2', './fonts/playfair-display-latin-900-normal.woff2', './fonts/playfair-display-latin-400-italic.woff2', './fonts/old-standard-tt-latin-400-normal.woff2', './fonts/old-standard-tt-latin-400-italic.woff2', './fonts/old-standard-tt-latin-700-normal.woff2'];
+const CACHE = 'thekey-v2.3.0';
+const SHELL = ['./', './index.html', './css/styles.css', './js/gazette.js', './js/data.js', './js/core.js', './js/discover.js', './js/app.js', './manifest.webmanifest', './guitar/index.html', './guitar/rhythm.css', './guitar/rhythm-core.js', './guitar/rhythm.js', './guitar/vendor/vexflow-bravura.js', './personal.enc.json', './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png', './fonts/unifrakturmaguntia-latin-400-normal.woff2', './fonts/playfair-display-latin-700-normal.woff2', './fonts/playfair-display-latin-900-normal.woff2', './fonts/playfair-display-latin-400-italic.woff2', './fonts/old-standard-tt-latin-400-normal.woff2', './fonts/old-standard-tt-latin-400-italic.woff2', './fonts/old-standard-tt-latin-700-normal.woff2'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
