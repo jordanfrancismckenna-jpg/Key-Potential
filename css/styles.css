@@ -2,7 +2,7 @@
   --bg: #111814; --bg2: #151e19; --card: #1a251f; --card2: #223029; --line: #31443a;
   --text: #eef0e6; --muted: #b3c2b6; --faint: #84968a;
   --gold: #d4a64a; --gold2: #f0cf85; --goldDim: rgba(212,166,74,.14);
-  --workout: #ff6b5e; --diet: #4aa8ff; --reading: #8be0a8; --warn: #f2a03d; --bad: #ff6b5e; --good: #4fd18b;
+  --workout: #ff6b5e; --diet: #4aa8ff; --reading: #8be0a8; --guitar: #c39bff; --warn: #f2a03d; --bad: #ff6b5e; --good: #4fd18b;
   --serif: 'Iowan Old Style', 'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, serif;
   --sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --r: 18px; --safeB: env(safe-area-inset-bottom, 0px); --safeT: env(safe-area-inset-top, 0px);
@@ -232,7 +232,7 @@ body.locked nav.tabs { display: none; }
 
 /* guitar */
 .guitar-head { background: linear-gradient(180deg, var(--card), var(--bg2)); border: 1px solid var(--line); border-radius: var(--r); padding: 12px 14px; margin-bottom: 10px; }
-.guitar-frame { display: block; width: calc(100% + 32px); margin: 0 -16px; border: 0; height: calc(100dvh - 300px - var(--safeB)); min-height: 520px; background: #fff; border-radius: 14px 14px 0 0; }
+.guitar-frame { display: block; width: calc(100% + 32px); margin: 0 -16px; border: 0; height: calc(100dvh - 250px - var(--safeB)); min-height: 560px; background: #fff; border-radius: 14px 14px 0 0; }
 body.on-guitar #app { padding-bottom: calc(70px + var(--safeB)); }
 
 /* ================= v2: Today ================= */

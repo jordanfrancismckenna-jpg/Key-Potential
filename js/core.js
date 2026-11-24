@@ -177,11 +177,21 @@
     const pct = clamp(min / goal);
     return { pct, state: pct >= 1 ? 'done' : 'partial', detail: `${min}/${goal} min` };
   }
-  const rings = (d) => ({ workout: workoutRing(d), diet: dietRing(d), reading: readingRing(d) });
+  /* Guitar ring: minutes logged by the Guitar timer (or added manually) ÷ daily goal. */
+  function guitarMinutes(d) { return ((S.guitar && S.guitar.log) || []).filter((x) => x.date === d).reduce((a, x) => a + (+x.min || 0), 0); }
+  function guitarRing(d) {
+    if (d > today()) return { pct: null, state: 'future' };
+    const min = guitarMinutes(d), goal = (S.guitar && S.guitar.goal) || 30;
+    if (!min) return { pct: 0, state: 'unlogged', detail: 'No practice logged' };
+    const pct = clamp(min / goal);
+    return { pct, state: pct >= 1 ? 'done' : 'partial', detail: `${min}/${goal} min` };
+  }
+  const RING_KEYS = ['workout', 'diet', 'reading', 'guitar'];
+  const rings = (d) => ({ workout: workoutRing(d), diet: dietRing(d), reading: readingRing(d), guitar: guitarRing(d) });
 
   function ringAverages(dates) {
     const out = {};
-    for (const k of ['workout', 'diet', 'reading']) {
+    for (const k of RING_KEYS) {
       const since = S.settings.trackingSince || '0000';
       // days before you started using The Key are excluded unless you back-filled them
       const vals = dates.map((d) => [d, rings(d)[k]]).filter(([d, r]) => r.state !== 'future' && r.state !== 'rest' && !(r.state === 'unlogged' && d < since)).map(([, r]) => r);
@@ -582,7 +592,7 @@
     load, save, resetAll, importData, get S() { return S; },
     currentCycle, cycleInfo, tpl, planFor, sessionsOn, runsOn, workSets, plannedSetCount, e1rm, exerciseHistory, suggestNext,
     dayType, meal, mealsPlanned, mealLogs, dayNutrition,
-    workoutRing, dietRing, readingRing, rings, ringAverages, studyMinutes,
+    workoutRing, dietRing, readingRing, guitarRing, guitarMinutes, RING_KEYS, rings, ringAverages, studyMinutes,
     occurrences, undated, nextPayday, safeToSpend, latestAnchor, projectedBalance, forecastSeries, monthlySummary,
     course, modKey, courseProgress, unlocked, download, buildICS };
 })();

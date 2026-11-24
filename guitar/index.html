@@ -32,7 +32,7 @@ button{font-family:inherit;cursor:pointer;transition:background .15s,border-colo
 #posLabel{font-size:12px;color:#475569}
 #flatBtn{padding:6px 10px;border-radius:8px;font-size:13px;border:.5px solid #cbd5e1;
   background:#f3f1ee;color:#475569;flex-shrink:0}
-#metBtn{display:flex;align-items:center;gap:6px;padding:8px 12px;border-radius:10px;
+#metBtn{display:flex;align-items:center;gap:6px;padding:8px 14px;min-height:44px;min-width:64px;border-radius:10px;touch-action:manipulation;
   font-size:13px;font-weight:600;flex-shrink:0;border:.5px solid #cbd5e1;
   background:#f3f1ee;color:#475569;position:relative}
 #metBtn.running{background:#3F9E6E;color:#fff;border-color:#3F9E6E}
@@ -61,7 +61,7 @@ button{font-family:inherit;cursor:pointer;transition:background .15s,border-colo
 .ct-stepper{display:flex;align-items:center;gap:8px}
 #barsPerChordVal{font-size:14px;font-weight:700;min-width:18px;text-align:center;color:#1e293b}
 .ct-hint{font-size:10px;color:#94a3b8;line-height:1.4}
-#metStartStop{width:100%;padding:10px 0;border-radius:10px;font-size:13px;
+#metStartStop{width:100%;padding:14px 0;min-height:48px;touch-action:manipulation;border-radius:10px;font-size:13px;
   font-weight:600;color:#fff;border:none;background:#3F9E6E;margin-top:12px}
 #metStartStop.running{background:#E14B4A}
 
@@ -254,10 +254,6 @@ button{font-family:inherit;cursor:pointer;transition:background .15s,border-colo
       <button id="prevBtn" onclick="goPrev()">‹</button>
       <div id="stepCount" class="mono">1/4</div>
       <button id="nextBtn" onclick="goNext()"></button>
-    </div>
-    <div id="neckWrap">
-      <div id="neckLabel" class="mono"></div>
-      <svg id="neckMap" viewBox="0 0 350 90"></svg>
     </div>
   </div>
 
@@ -536,7 +532,7 @@ function renderLegend(items){
 }
 
 function renderNeckMap(){
-  const svg=document.getElementById('neckMap');svg.innerHTML='';
+  const svg=document.getElementById('neckMap');if(!svg)return;svg.innerHTML='';
   const maxFret=18,VW=350,PL=24,PR=10,PT=8,PB=16,strH=14.5,STR_COUNT=6;
   const VH=PT+(STR_COUNT-1)*strH+PB;svg.setAttribute('viewBox',`0 0 ${VW} ${VH}`);
   const ftX=f=>PL+(f/maxFret)*(VW-PL-PR);
@@ -572,7 +568,6 @@ function render(){
   document.getElementById('shapeLabel').textContent=sh.label;
   document.getElementById('posLabel').textContent=`${posLbl} · ${getStepLabel()}`;
   document.getElementById('flatBtn').textContent=useFlats?'♯':'♭';
-  document.getElementById('neckLabel').textContent=`${sym} — all positions`;
   document.getElementById('card').style.borderTopColor=col;
   // key grid
   const kg=document.getElementById('keyGrid');kg.innerHTML='';
@@ -623,7 +618,6 @@ function render(){
   document.getElementById('stepCount').textContent=`${step+1}/4`;
   const nb=document.getElementById('nextBtn');nb.style.background=col;nb.style.borderColor=col;
   nb.textContent=step<3?['Arpeggio','Pentatonic','Scale',''][step]+' ›':SHAPES[(SHAPES.indexOf(shape)+1)%5]+'-shape ›';
-  renderNeckMap();
 }
 
 function setQuality(q){quality=q;render();}

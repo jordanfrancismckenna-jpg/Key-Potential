@@ -8,7 +8,8 @@
   const $ov = document.getElementById('overlay');
   const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const WDL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  const RING = { workout: 'Workout', diet: 'Diet', reading: 'Reading' };
+  const RING = { workout: 'Workout', diet: 'Diet', reading: 'Reading', guitar: 'Guitar' };
+  const RK = T.RING_KEYS;
   const ui = { calMonth: T.today().slice(0, 7), calView: 'month', trainTab: 'today', finTab: 'overview', nutTab: 'day', nutDate: null, progWeek: null, theme: 'justice', histEx: null, sheet: null };
 
   /* ---------------- small helpers ---------------- */
@@ -32,10 +33,11 @@
 
   /* ---------------- rings SVG ---------------- */
   function ringSVG(rg, size = 120, w = 11, anim = false) {
-    const gap = w > 8 ? 2.5 : 1.5;
-    const radii = [50 - w / 2, 50 - w * 1.5 - gap, 50 - w * 2.5 - gap * 2];
+    const n = RK.length; w = n > 3 ? w * 0.8 : w;
+    const gap = w > 7 ? 2.2 : 1.4;
+    const radii = RK.map((_, i) => 50 - w / 2 - i * (w + gap));
     let s = `<svg viewBox="0 0 100 100" width="${size}" height="${size}" aria-hidden="true">`;
-    ['workout', 'diet', 'reading'].forEach((k, i) => {
+    RK.forEach((k, i) => {
       const r = radii[i], C = 2 * Math.PI * r, x = rg[k], col = `var(--${k})`;
       if (x.state === 'rest') s += `<circle cx="50" cy="50" r="${r}" fill="none" stroke="${col}" stroke-opacity=".45" stroke-width="${w * 0.5}" stroke-dasharray="${C / 24} ${C / 24}"/>`;
       else s += `<circle cx="50" cy="50" r="${r}" fill="none" stroke="${col}" stroke-opacity="${x.state === 'future' ? 0.06 : 0.18}" stroke-width="${w}"/>`;
@@ -44,7 +46,7 @@
     return s + '</svg>';
   }
   function ringLegend(rg) {
-    return ['workout', 'diet', 'reading'].map((k) => {
+    return RK.map((k) => {
       const x = rg[k];
       const v = x.state === 'rest' ? 'Rest' : x.state === 'future' ? '—' : pct(x.pct);
       return `<div class="item"><span class="dot" style="background:var(--${k})"></span><div class="grow"><div class="lbl">${RING[k]}</div><div class="small muted">${h(x.detail || (x.state === 'unlogged' ? 'Not logged yet' : ''))}</div></div><div class="v" style="color:var(--${k})">${v}</div></div>`;
@@ -169,13 +171,13 @@
       out += `<div class="row between" style="margin-bottom:8px"><button class="btn sm" data-a="weekMove" data-n="-7">‹ Prev</button><div class="small muted">Week of ${T.fmtDate(ws, { day: 'numeric', month: 'short' })}</div><button class="btn sm" data-a="weekMove" data-n="7">Next ›</button></div><div class="card" data-swipe="swipeWeek">`;
       for (const d of T.range(ws, T.addDays(ws, 6))) {
         const rg = T.rings(d);
-        out += `<div class="weekrow" data-a="openDay" data-d="${d}">${ringSVG(rg, 54, 10)}<div class="grow"><div style="font-weight:600${d === td ? ';color:var(--gold2)' : ''}">${T.fmtDate(d, { weekday: 'long', day: 'numeric', month: 'short' })}</div><div class="tiny muted">${['workout', 'diet', 'reading'].map((k) => `<span style="color:var(--${k})">●</span> ${rg[k].state === 'rest' ? 'rest' : rg[k].state === 'future' ? '—' : pct(rg[k].pct)}`).join(' &nbsp; ')}</div></div><span class="faint">›</span></div>`;
+        out += `<div class="weekrow" data-a="openDay" data-d="${d}">${ringSVG(rg, 54, 10)}<div class="grow"><div style="font-weight:600${d === td ? ';color:var(--gold2)' : ''}">${T.fmtDate(d, { weekday: 'long', day: 'numeric', month: 'short' })}</div><div class="tiny muted">${RK.map((k) => `<span style="color:var(--${k})">●</span> ${rg[k].state === 'rest' ? 'rest' : rg[k].state === 'future' ? '—' : pct(rg[k].pct)}`).join(' &nbsp; ')}</div></div><span class="faint">›</span></div>`;
       }
       out += '</div>';
     }
     const days = T.range(first, last <= td ? last : td < first ? first : td).filter((d) => d <= td);
     const av = T.ringAverages(days);
-    out += `<div class="card"><h3>${label.split(' ')[0]} so far</h3><div class="grid3" style="margin-top:10px">${['workout', 'diet', 'reading'].map((k) => `<div class="kpi"><div class="v" style="color:var(--${k})">${pct(av[k])}</div><div class="l">${RING[k]}</div><div class="tiny muted">${av[k + 'Closed']}/${av[k + 'Days']} closed</div></div>`).join('')}</div><p class="tiny muted" style="margin-bottom:0">Averages exclude rest days and future days. Dashed ring = rest day (never counted against you). Faint ring = nothing logged.</p></div>`;
+    out += `<div class="card"><h3>${label.split(' ')[0]} so far</h3><div class="grid2" style="margin-top:10px">${RK.map((k) => `<div class="kpi"><div class="v" style="color:var(--${k})">${pct(av[k])}</div><div class="l">${RING[k]}</div><div class="tiny muted">${av[k + 'Closed']}/${av[k + 'Days']} closed</div></div>`).join('')}</div><p class="tiny muted" style="margin-bottom:0">Averages exclude rest days and future days. Dashed ring = rest day (never counted against you). Faint ring = nothing logged.</p></div>`;
     return out;
   }
 
@@ -674,7 +676,7 @@ Start by asking about whichever of my answers is weakest.`;
     const av = T.ringAverages(days), pv = T.ringAverages(prev);
     let out = top('Progress', { back: '#/more', eyebrow: 'Weekly review' });
     out += `<div class="row between" style="margin-bottom:12px"><button class="icon-btn" data-a="progMove" data-n="-7">‹</button><div class="serif" style="font-size:18px">${T.fmtDate(ws, { day: 'numeric', month: 'short' })} – ${T.fmtDate(we, { day: 'numeric', month: 'short' })}</div><button class="icon-btn" data-a="progMove" data-n="7">›</button></div>`;
-    out += `<div class="card"><h3>Rings</h3><div class="grid3" style="margin-top:10px">${['workout', 'diet', 'reading'].map((k) => { const dlt = av[k] != null && pv[k] != null ? Math.round((av[k] - pv[k]) * 100) : null; return `<div class="kpi"><div class="v" style="color:var(--${k})">${pct(av[k])}</div><div class="l">${RING[k]}</div><div class="tiny ${dlt > 0 ? 'good' : dlt < 0 ? 'warn' : 'muted'}">${dlt == null ? '' : (dlt > 0 ? '▲ ' : dlt < 0 ? '▼ ' : '') + Math.abs(dlt) + ' pts vs last wk'}</div></div>`; }).join('')}</div><div class="row" style="justify-content:space-between;margin-top:12px">${days.map((d) => `<div style="text-align:center" data-a="openDay" data-d="${d}">${ringSVG(T.rings(d), 38, 9)}<div class="tiny faint">${WD[T.weekday(d)][0]}</div></div>`).join('')}</div></div>`;
+    out += `<div class="card"><h3>Rings</h3><div class="grid2" style="margin-top:10px">${RK.map((k) => { const dlt = av[k] != null && pv[k] != null ? Math.round((av[k] - pv[k]) * 100) : null; return `<div class="kpi"><div class="v" style="color:var(--${k})">${pct(av[k])}</div><div class="l">${RING[k]}</div><div class="tiny ${dlt > 0 ? 'good' : dlt < 0 ? 'warn' : 'muted'}">${dlt == null ? '' : (dlt > 0 ? '▲ ' : dlt < 0 ? '▼ ' : '') + Math.abs(dlt) + ' pts vs last wk'}</div></div>`; }).join('')}</div><div class="row" style="justify-content:space-between;margin-top:12px">${days.map((d) => `<div style="text-align:center" data-a="openDay" data-d="${d}">${ringSVG(T.rings(d), 38, 9)}<div class="tiny faint">${WD[T.weekday(d)][0]}</div></div>`).join('')}</div></div>`;
     const sess = S.sessions.filter((s) => s.date >= ws && s.date <= we), runs = S.runs.filter((r) => r.date >= ws && r.date <= we);
     out += `<div class="card"><h3>Training</h3><div class="grid3" style="margin-top:10px"><div class="kpi"><div class="v">${sess.length}</div><div class="l">Sessions</div></div><div class="kpi"><div class="v">${sess.reduce((a, s) => a + T.workSets(s).length, 0)}</div><div class="l">Work sets</div></div><div class="kpi"><div class="v">${Math.round(sess.reduce((a, s) => a + volume(s), 0) / 1000 * 10) / 10}t</div><div class="l">Volume</div></div><div class="kpi"><div class="v">${runs.length}</div><div class="l">Runs</div></div><div class="kpi"><div class="v">${runs.reduce((a, r) => a + (+r.min || 0), 0)}</div><div class="l">Run min</div></div><div class="kpi"><div class="v">${T.round2(runs.reduce((a, r) => a + (+r.km || 0), 0))}</div><div class="l">km</div></div></div>${legSets(sess)}</div>`;
     const meals = days.reduce((a, d) => a + T.mealLogs(d).length, 0), planned = days.filter((d) => d <= T.today()).reduce((a, d) => a + T.mealsPlanned(d).length, 0);
@@ -690,7 +692,7 @@ Start by asking about whichever of my answers is weakest.`;
     const ci = T.cycleInfo();
     if (ci) {
       const cd = T.range(ci.start, ci.end);
-      out += `<div class="card"><h3>${h(ci.name)}</h3><p class="tiny muted" style="margin-top:0">Each square is one day. Brighter = more complete. Hatched = rest.</p>${['workout', 'diet', 'reading'].map((k) => `<div class="row" style="gap:2px;margin-top:6px;flex-wrap:wrap">${cd.map((d) => { const r = T.rings(d)[k]; const op = r.state === 'future' ? 0.05 : r.state === 'rest' ? 0.25 : 0.12 + 0.88 * r.pct; return `<span title="${d}" style="width:7px;height:12px;border-radius:2px;background:var(--${k});opacity:${op};${r.state === 'rest' ? 'background-image:repeating-linear-gradient(45deg,transparent 0 2px,#000 2px 3px)' : ''}"></span>`; }).join('')}</div>`).join('')}</div>`;
+      out += `<div class="card"><h3>${h(ci.name)}</h3><p class="tiny muted" style="margin-top:0">Each square is one day. Brighter = more complete. Hatched = rest.</p>${RK.map((k) => `<div class="row" style="gap:2px;margin-top:6px;flex-wrap:wrap">${cd.map((d) => { const r = T.rings(d)[k]; const op = r.state === 'future' ? 0.05 : r.state === 'rest' ? 0.25 : 0.12 + 0.88 * r.pct; return `<span title="${d}" style="width:7px;height:12px;border-radius:2px;background:var(--${k});opacity:${op};${r.state === 'rest' ? 'background-image:repeating-linear-gradient(45deg,transparent 0 2px,#000 2px 3px)' : ''}"></span>`; }).join('')}</div>`).join('')}</div>`;
     }
     out += `<div class="card"><div class="card-head"><h3>The Key Cycles</h3><button class="link" data-a="cycleSheet">+ New cycle</button></div><ul class="list">${S.cycles.map((c) => `<li class="row between" data-a="cycleSheet" data-id="${c.id}" style="cursor:pointer"><span>${h(c.name)} <span class="tiny gold">Edit</span></span><span class="small muted">${T.fmtDate(c.start, { day: 'numeric', month: 'short', year: '2-digit' })} – ${T.fmtDate(c.end, { day: 'numeric', month: 'short', year: '2-digit' })}</span></li>`).join('')}</ul><p class="tiny muted">New cycles keep all history. Rings and trends here show patterns, not proof of cause and effect.</p></div>`;
     return out;
@@ -838,7 +840,7 @@ Start by asking about whichever of my answers is weakest.`;
 
   /* ---------- celebration, close the day, weekly review ---------- */
   function maybeCelebrate(d) {
-    const rg = T.rings(d), ks = ['workout', 'diet', 'reading'];
+    const rg = T.rings(d), ks = RK;
     const closed = ks.every((k) => rg[k].state === 'rest' || rg[k].pct >= 1) && ks.some((k) => rg[k].pct >= 1);
     S.celebrated = S.celebrated || {};
     if (!closed || S.celebrated[d] || route().name !== 'home') return;
@@ -882,7 +884,7 @@ Start by asking about whichever of my answers is weakest.`;
     const unplanned = bank.filter((r) => !matched.has(r.id)).reduce((a, r) => a - r.amount, 0);
     const W = (S.weekly = S.weekly || {});
     const dl = (k) => (av[k] != null && pv[k] != null ? Math.round((av[k] - pv[k]) * 100) : null);
-    return `<div class="cd-step wk"><div class="cd-h">Week in review</div><div class="grid3">${['workout', 'diet', 'reading'].map((k) => `<div class="kpi"><div class="v" style="color:var(--${k})">${pct(av[k])}</div><div class="l">${RING[k]}</div><div class="tiny ${dl(k) > 0 ? 'good' : dl(k) < 0 ? 'warn' : 'muted'}">${dl(k) == null ? '' : (dl(k) > 0 ? '▲' : dl(k) < 0 ? '▼' : '') + Math.abs(dl(k)) + ' pts'}</div></div>`).join('')}</div>
+    return `<div class="cd-step wk"><div class="cd-h">Week in review</div><div class="grid2">${RK.map((k) => `<div class="kpi"><div class="v" style="color:var(--${k})">${pct(av[k])}</div><div class="l">${RING[k]}</div><div class="tiny ${dl(k) > 0 ? 'good' : dl(k) < 0 ? 'warn' : 'muted'}">${dl(k) == null ? '' : (dl(k) > 0 ? '▲' : dl(k) < 0 ? '▼' : '') + Math.abs(dl(k)) + ' pts'}</div></div>`).join('')}</div>
       <ul class="plain" style="margin-top:8px"><li class="prow"><span>🏋️</span><div class="grow small">${sess.length} sessions${prs.length ? ` · new bests: ${prs.map((p) => h(p.n)).join(', ')}` : ''}</div></li><li class="prow"><span>🎸</span><div class="grow small">${gdays}/7 days at ${G().goal} min guitar</div></li><li class="prow"><span>📖</span><div class="grow small">${study} min study</div></li>${bank.length ? `<li class="prow"><span>💷</span><div class="grow small">${T.gbp(unplanned)} spent outside your plan (from your statement)</div></li>` : ''}</ul>
       <label class="f">Focus for next week</label><textarea style="min-height:60px" placeholder="The one thing that would make next week a win" data-bind="weekly.${T.addDays(ws, 7)}">${h(W[T.addDays(ws, 7)] || '')}</textarea>${W[ws] ? `<p class="tiny muted">This week's focus was: “${h(W[ws])}”</p>` : ''}</div>`;
   }
@@ -933,14 +935,14 @@ Start by asking about whichever of my answers is weakest.`;
     const perm = 'Notification' in window ? Notification.permission : 'unsupported';
     return top('Settings', { back: '#/more', eyebrow: 'The Key' }) + `
       <div class="card"><h3>Tab bar</h3><p class="small muted" style="margin-top:0">Choose up to 6 tabs. Everything else is under the ⊞ More button at the top of Today.</p><div class="row wrap" style="gap:6px">${TAB_ORDER.map((k) => `<button class="btn sm ${myTabs().includes(k) ? 'primary' : ''}" data-a="toggleTab" data-k="${k}">${TAB_DEFS[k].label}</button>`).join('')}</div><button class="link small" style="margin-top:10px" data-a="resetTabs">Reset to default</button></div>
-      <div class="card"><h3>Ring goals</h3><div class="grid2"><div><label class="f">Daily study (min)</label><input type="number" value="${S.settings.readingGoalMin}" data-bind="settings.readingGoalMin" data-type="num"></div><div><label class="f">Default run (min)</label><input type="number" value="${S.settings.runDefaultMin}" data-bind="settings.runDefaultMin" data-type="num"></div></div><label class="f">Rest-day bonus activity that fills the ring (min)</label><input type="number" value="${S.settings.restDayActivityMin}" data-bind="settings.restDayActivityMin" data-type="num"><p class="tiny muted">Workout ring: gym days = ticked working sets ÷ planned sets; run days = minutes ÷ target; rest and optional days never count against you. Diet ring = planned meals eaten (portion-weighted). Reading ring = study minutes ÷ goal.</p></div>
+      <div class="card"><h3>Ring goals</h3><div class="grid2"><div><label class="f">Daily study (min)</label><input type="number" value="${S.settings.readingGoalMin}" data-bind="settings.readingGoalMin" data-type="num"></div><div><label class="f">Default run (min)</label><input type="number" value="${S.settings.runDefaultMin}" data-bind="settings.runDefaultMin" data-type="num"></div></div><label class="f">Rest-day bonus activity that fills the ring (min)</label><input type="number" value="${S.settings.restDayActivityMin}" data-bind="settings.restDayActivityMin" data-type="num"><p class="tiny muted">Workout ring: gym days = ticked working sets ÷ planned sets; run days = minutes ÷ target; rest and optional days never count against you. Diet ring = planned meals eaten (portion-weighted). Reading ring = study minutes ÷ goal. Guitar ring = minutes logged with the Guitar timer (or added manually) ÷ 30.</p></div>
       <div class="card"><h3>Reminders</h3><p class="small muted" style="margin-top:0"><b>Most reliable:</b> add The Key's schedule to your phone's calendar. Your calendar app then alerts you even when The Key is closed.</p><div class="stack"><button class="btn block" data-a="ics" data-w="all">Download calendar (.ics): bills, meals & training</button><div class="grid3"><button class="btn sm" data-a="ics" data-w="bills">Bills only</button><button class="btn sm" data-a="ics" data-w="meals">Meals only</button><button class="btn sm" data-a="ics" data-w="training">Training only</button></div></div>
         <hr class="sep"><div class="row between"><div class="grow"><div style="font-weight:600">In-app notifications</div><div class="tiny muted">Meal times & bills due tomorrow. Only fire while The Key is open or recently used (permission: ${perm}).</div></div><button class="btn sm" data-a="notif">${S.settings.notifications && perm === 'granted' ? 'On' : 'Enable'}</button></div><p class="tiny muted">iPhone: notifications need iOS 16.4+ and The Key added to your Home Screen. True background push needs a server — planned for a later version.</p></div>
       <div class="card"><h3>Install on your phone</h3>${standalone ? '<p class="good small">✓ Running as an installed app.</p>' : `<p class="small" style="margin-top:0"><b>iPhone (Safari):</b> Share button → <i>Add to Home Screen</i>.<br><b>Android (Chrome):</b> ⋮ menu → <i>Install app</i> / <i>Add to Home screen</i>.</p>`}<p class="tiny muted">Requires The Key to be served over HTTPS (see README for a free 2-minute deploy).</p></div>
       <div class="card"><h3>Personal setup</h3><p class="small muted" style="margin-top:0">${S.settings.unlocked ? `Unlocked on ${T.fmtDate(S.settings.unlocked)}. Your edits since then live only on this device — keep backups.` : 'Your routine, meal plan, bills, lock-in and quotes are stored encrypted on the site. Unlock them with your passphrase.'}</p><button class="btn block" data-a="startUnlock">${S.settings.unlocked ? 'Re-load setup from encrypted file' : 'Unlock personal setup'}</button></div>
       ${(() => { const c = T.syncCfg(); return `<div class="card"><h3>🔒 Encrypted backup</h3>${c && c.enabled ? `<p class="small" style="margin-top:0">Backing up to <b>${h(c.owner)}/${h(c.repo)}</b> (private). ${c.last ? `Last backup ${new Date(c.last).toLocaleString('en-GB', { timeZone: 'Europe/London', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}.` : 'No backup yet.'}${c.lastErr ? `<br><span class="bad">Last attempt failed: ${h(c.lastErr)}</span>` : ''}</p><p class="tiny muted">Backs up automatically every 6 hours when something has changed, and keeps one dated copy per day.</p><div class="row" style="gap:8px"><button class="btn grow" data-a="backupNow">Back up now</button><button class="btn danger" data-a="backupOff">Turn off</button></div>` : `<p class="small muted" style="margin-top:0">Your logs currently live only on this phone. Turn on automatic encrypted backups to your private GitHub so you can restore everything on any device.</p><button class="btn primary block" data-a="backupSetup">Set up cloud backup</button>`}<div class="row" style="gap:8px;margin-top:10px"><button class="btn grow ghost" data-a="fileBackupSheet">Save encrypted file</button><button class="btn grow ghost" data-a="restoreSheet">Restore from cloud</button></div></div>`; })()}
       <div class="card"><h3>Your data</h3><p class="small muted" style="margin-top:0">Everything is stored privately on this device only — nothing is sent anywhere. Back up regularly, and use the backup file to move to a new phone.</p><div class="stack"><button class="btn block" data-a="exportData">Export backup (.json)</button><label class="btn block ghost" style="cursor:pointer">Import backup<input type="file" accept="application/json,.json" data-c="importData" style="display:none"></label><button class="btn danger block" data-a="wipe">Delete all data</button></div></div>
-      <p class="tiny muted" style="text-align:center">The Key · v2.1 · local-first · ${h(S.settings.tagline)}</p>`;
+      <p class="tiny muted" style="text-align:center">The Key · v2.2 · local-first · ${h(S.settings.tagline)}</p>`;
   }
 
   /* ---------- UNLOCK ---------- */

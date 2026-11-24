@@ -2,7 +2,7 @@
 
 A private, phone-first personal operating system, built as an installable web app (PWA):
 
-- **The Key Rings:** a calendar with three daily rings (Workout, Diet, Reading)
+- **The Key Rings:** a calendar with four daily rings (Workout, Diet, Reading, Guitar)
 - **Training:** strength log with progression suggestions, runs and body metrics
 - **Nutrition:** meal plans, logging, consumed vs target, shopping list
 - **Finance:** dated cash-flow forecast, bank-balance reconciliation, **bank statement import** (Barclays CSV and generic CSV), Dave Ramsey's principles and a Baby Step tracker
@@ -41,6 +41,7 @@ This repository is public, but **no personal data is readable in it**.
 - **Workout:** gym day = ticked working sets ÷ planned sets. Run day = minutes ÷ target. Rest, optional and "unwell" days never count against you.
 - **Diet:** planned meals eaten (portion-weighted, capped at 100%) ÷ planned meals. Under-eating lowers the ring.
 - **Reading:** study minutes ÷ daily goal.
+- **Guitar:** practice minutes logged with the Guitar timer (or added manually) ÷ 30.
 
 ## What's real and what isn't
 
